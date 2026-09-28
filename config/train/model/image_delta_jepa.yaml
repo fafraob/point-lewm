@@ -1,0 +1,78 @@
+_target_: jepa.JEPA
+
+# Point-Delta-JEPA's objective on PIXELS: the upstream LeWM image stack
+# (ViT-tiny/14 at ${img_size}, trained from scratch, CLS read out as the
+# per-frame latent) plus Delta-JEPA's Latent Difference Action Decoder. Encoder,
+# predictor and projectors are IDENTICAL to that image baseline; the additions
+# are the displacement->action inverse head and a wider predictor pos-embedding
+# (num_frames follows history_size = 5: full-window teacher forcing, see the
+# train configs). The train config swaps SIGReg for the LDAD action
+# reconstruction loss -- exactly the substitution model/point_delta_jepa_<env>.yaml
+# makes on the point-cloud side.
+#
+# ONE model config serves all four environments, unlike the point-cloud arms.
+# The three keys that force a per-environment point-cloud config (norm_center /
+# norm_scale / group_radius) are properties of a cloud's geometry and have no
+# pixel counterpart: an image is already in a fixed, normalized frame. The only
+# per-environment quantity is the action width, and train.py fills that in from
+# the dataset (action_encoder.input_dim / action_decoder.action_dim).
+#
+# Run with: pixi run train --config-name=image_delta_jepa_<env> run_name=image_delta_jepa_<env>
+encoder:
+  _target_: stable_pretraining.backbone.utils.vit_hf
+  size: tiny            # 192-d / 12-layer / 3-head, ~5.5M -- the paper's pixel encoder
+  patch_size: 14        # 224 / 14 = 16x16 = 256 patch tokens + CLS
+  image_size: ${img_size}
+  pretrained: false     # trained end-to-end from scratch, as in LeWM
+  use_mask_token: false
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???        # frameskip * action_dim, set by train.py from the dataset
+  emb_dim: ${embed_dim}
+
+# Delta-JEPA LDAD: reconstructs the N=horizon macro-actions spanning the latent
+# displacement z_{t+N} - z_t. Sized exactly as model/point_delta_jepa_cube.yaml (the
+# paper's 3-layer non-causal transformer, 8 heads, dim_head 64, FFN 512), since
+# the head consumes latents and never observations.
+# Training-only; planning never calls it.
+action_decoder:
+  _target_: module.LatentDifferenceActionDecoder
+  latent_dim: ${embed_dim}
+  action_dim: ???       # set by train.py to match action_encoder.input_dim
+  horizon: ${ldad_horizon}
+  depth: 3
+  heads: 8
+  dim_head: 64
+  mlp_dim: 512
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

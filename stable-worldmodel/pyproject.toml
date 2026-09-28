@@ -1,0 +1,119 @@
+[project]
+name = "stable-worldmodel"
+version = "0.1.1"
+description = "World Model Research Made Simple"
+readme="README.md"
+license="MIT"
+authors = [{name = "Lucas Maes"}, {name = "Quentin Le Lidec"}, {name = "Randall Balestriero"}]
+maintainers = [{name = "Lucas Maes", email = "lucas_maes@brown.edu"}]
+urls = {Homepage = "http://github.com/galilai-group/stable-worldmodel"}
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
+requires-python = ">=3.10"
+dependencies = [
+  "torch",
+  "torchvision",
+  "numpy",
+  "loguru",
+  "tabulate",
+  "gymnasium",
+  "einops",
+  "lancedb>=0.30.0",
+  "pylance>=4.0.0",
+  "pyarrow",
+  "pillow",
+  "tqdm",
+  "typer",
+  "rich",
+  "hydra-core", "opencv-python>=4.13.0.92,<5", "imageio>=2.37.3,<3",
+]
+
+[project.scripts]
+swm = "stable_worldmodel.cli:app"
+swm-lidar-viz = "stable_worldmodel.viz.lidar:main"
+
+[project.optional-dependencies]
+train = [
+    "transformers>=4.50.0",
+    "stable-pretraining>=0.1.7",
+    "hydra-submitit-launcher",
+    "wandb",
+]
+
+env = [
+    "pygame",
+    "pymunk",
+    "shapely",
+    "ogbench",
+    "minigrid",
+    "gymnasium[all]",
+    "gymnasium-robotics",
+    "opencv-python-headless",
+    "stable_baselines3>=2.0.0",
+    "craftax>=1.5.0",
+    "ale-py",
+    "warp-lang",
+]
+
+format = [
+    "h5py",
+    "hdf5plugin",
+    "torchcodec",
+    "imageio[ffmpeg]",
+]
+
+lerobot = [
+    "lerobot>=0.5.0; python_version >= '3.12'",
+]
+
+viz = [
+    "polyscope",
+    "imageio[ffmpeg]",
+    "matplotlib",  # simple_point_maze / piecewise env rendering + viz scripts
+]
+
+all = [
+    "stable-worldmodel[train,env,format,viz]",
+]
+
+[dependency-groups]
+dev = [
+  "ipdb",
+  "pre-commit",
+  "pytest",
+  "pytest-cov>=7.0.0",
+  "ruff",
+  "twine",
+  "mkdocs-shadcn",
+  "pymdown-extensions",
+  "pillow",
+  "torchcodec",
+  "imageio[ffmpeg]",
+  "mkdocstrings[python]",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "."
+source-exclude = [
+    "**/.mypy_cache/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+]
+
+[tool.ruff]
+line-length = 79
+indent-width = 4
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "single"
+
+[tool.coverage.run]
+omit = ["stable_worldmodel/envs/*"]

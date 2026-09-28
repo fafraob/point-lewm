@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this repository or the released checkpoints, please cite the paper."
+title: "Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations and Goals"
+authors:
+  - family-names: Oberweger
+    given-names: Fabio F.
+  - family-names: Schwingshackl
+    given-names: Michael
+  - family-names: Murschitz
+    given-names: Markus
+year: 2026
+url: "https://arxiv.org/abs/2608.29434"
+identifiers:
+  - type: other
+    value: "arXiv:2608.29434"
+preferred-citation:
+  type: article
+  title: "Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations and Goals"
+  authors:
+    - family-names: Oberweger
+      given-names: Fabio F.
+    - family-names: Schwingshackl
+      given-names: Michael
+    - family-names: Murschitz
+      given-names: Markus
+  year: 2026
+  journal: "arXiv preprint arXiv:2608.29434"
+  url: "https://arxiv.org/abs/2608.29434"

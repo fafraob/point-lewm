@@ -1,0 +1,26 @@
+# tworoom: stable-worldmodel image dataset $SWM_H5_DIR/tworoom.h5 (the .h5 the LeWM
+# image checkpoints were trained on; the eval Lance table is a verbatim copy
+# of its rows, so eval sequences match). noprop arm: proprio_key null feeds a
+# constant zero proprio (see dinowm_swm/h5_dset.py).
+name: swm_tworoom
+args: []
+kwargs: {}
+
+dataset:
+  _target_: dinowm_swm.h5_dset.load_swm_h5_slice_train_val
+  data_path: ${oc.env:SWM_H5_DIR}/tworoom.h5
+  split_ratio: 0.9
+  split_seed: 42
+  normalize_action: ${normalize_action}
+  action_key: action
+  proprio_key: null        # noprop. With proprio: proprio (2: agent xy)
+  state_key: observation            # logged / replayed only, never fed to the model
+  transform:
+    _target_: datasets.img_transforms.default_transform
+    img_size: ${img_size}
+
+decoder_path: null
+# DataLoader workers: window reads are ~3 ms each (blosc-lz4 chunk decode), so
+# 16 workers feed ~5k samples/s, far above the ~170 samples/s a GPU step
+# consumes. Override with env.num_workers=<n> to match the CPU cores available.
+num_workers: 16

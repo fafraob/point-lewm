@@ -1,0 +1,76 @@
+_target_: jepa.JEPA
+
+# Delta-JEPA on the PUSHT lidar dataset (ground KEPT). Encoder / predictor /
+# projectors are IDENTICAL to model/point_lewm_pusht.yaml; the additions are the LDAD
+# displacement->action head and the wider predictor pos-embedding (num_frames
+# follows history_size = 5, full-window teacher forcing). So the pusht pair
+# differs ONLY in the loss, exactly like the cube and two-room pairs.
+#
+# The three environment-geometry numbers (group_radius, norm_center,
+# norm_scale) are measured, not guessed -- the derivation and the rounding
+# choices are documented in model/point_lewm_pusht.yaml. If you change one there,
+# change it here too or the pairwise comparison stops isolating the loss.
+# Run with: pixi run train --config-name=point_delta_jepa_pusht run_name=point_delta_jepa_pusht
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  num_tokens: 256            # keep in sync with model/point_lewm_pusht.yaml
+  group_size: 32
+  group_radius: 0.18         # p75 of the NN-32 distance; see point_lewm_pusht.yaml
+  group_max_neighbors: 128
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only
+  norm_center: [4.88, 0.0, 0.33]
+  norm_scale: 2.01
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+# Delta-JEPA LDAD, sized exactly as model/point_delta_jepa_cube.yaml (the paper's
+# 3-layer non-causal transformer, 8 heads, dim_head 64, FFN 512).
+# Training-only; planning never calls it.
+action_decoder:
+  _target_: module.LatentDifferenceActionDecoder
+  latent_dim: ${embed_dim}
+  action_dim: ???            # frameskip * action_dim, set by train.py
+  horizon: ${ldad_horizon}
+  depth: 3
+  heads: 8
+  dim_head: 64
+  mlp_dim: 512
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

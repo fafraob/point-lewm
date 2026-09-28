@@ -1,0 +1,16 @@
+{
+ "episodes": [
+  0,
+  1,
+  2
+ ],
+ "start_steps": [
+  0,
+  0,
+  0
+ ],
+ "meta": {
+  "source": "cube.lance episodes 638, 5132, 7005 (start steps 29, 29, 35), frames start..start+25, episode/step indices renumbered",
+  "note": "three windows of eval_starts/starts_cube_seed42.json with >= 30 cm cube motion between start and goal frame"
+ }
+}

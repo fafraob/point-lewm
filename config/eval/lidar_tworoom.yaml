@@ -1,0 +1,165 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Lidar (point-cloud) eval for the two-room arm -- point-cloud sibling of
+# config/eval/image_tworoom.yaml, structured like lidar_cube.yaml.
+#
+# THE ENV IS NOT swm/TwoRoom-v1. That one is a pure-torch 2D env with no MuJoCo
+# model, and AddRaycastLidarWrapper (mj_multiRay) refuses it. The lidar dataset was
+# written against swm/TwoRoomLidar-v1, the MuJoCo *mirror* of the same 2D env
+# (stable_worldmodel/envs/two_room/lidar_env.py): identical 2D dynamics, plus a
+# rebuilt MuJoCo scene the sensor can raycast.
+#
+# The mirror env, the `iso` camera and the sensor's `match_camera_fov` live in
+# the vendored stable-worldmodel/ package.
+#
+# Every value in `world.iso_*` and `lidar.sensor` below is copied from the
+# config that GENERATED the dataset, stable-worldmodel's
+# scripts/data/config/lidar_from_h5_tworoom.yaml. They must stay in sync with
+# it: a sensor that does not match the one behind the data feeds the model
+# clouds it never saw in training, which does not crash -- it just returns a
+# success rate that says nothing about the checkpoint.
+
+world:
+  env_name: swm/TwoRoomLidar-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_lidar.py to 2 * eval_budget
+  # --- env kwargs, forwarded by swm.World to the mirror env ---
+  # The goal is a task instruction, not something the sensor should see: with
+  # null, no goal marker is mirrored and the scan carries only walls + agent.
+  # The dataset was collected this way; a height here would put a cue in the
+  # cloud that training never had.
+  goal_lidar_height: null
+  # Oblique sensor bearing. The `iso` camera is framed on the arena from here,
+  # and the scan (match_camera_fov) inherits its field of view -- so these two
+  # numbers are part of the sensor definition, not cosmetics.
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+dataset:
+  # columns to z-score and expose to the policy (the lidar cloud is used raw)
+  stats_keys:
+    - action
+
+seed: 42
+# Planner mode (Delta-JEPA checkpoints required for the ldad modes):
+#   cem       plain CEM from a zero-initialized sampling mean
+#   ldad_cem  CEM warm-started with LDAD-decoded actions D(z_goal - z_now)
+#             (see LidarLDADPlanAdapter)
+#   ldad      the decoded plan executed directly each replan -- no CEM
+#             (see LDADSolver; isolates the decoder as an amortized policy)
+# eval_lidar.py defaults this to cem when absent, but Hydra's struct mode then
+# rejects a plain `planner=...` override ("Key 'planner' is not in struct"), so
+# the key is declared here -- a sweep must be able to set it.
+planner: cem
+# ckpt path relative to <run>/checkpoints/, or `random` for the baseline.
+# Checkpoint to evaluate, relative to <cache_dir>/checkpoints/ (or `random`).
+# Default: the released checkpoints downloaded into <repo>/checkpoints/<env>/<model>/
+# (scripts/download_checkpoints.py), e.g. policy=tworoom/point-lewm/weights.pt.
+# For a training run of your own, run=<folder under logs_root> selects
+# <logs_root>/<run>/checkpoints/<policy> instead (run= takes precedence).
+policy: tworoom/point-delta-jepa/weights.pt
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+cache_dir: ${hydra:runtime.cwd}
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip, == config/train/data/lidar_tworoom.yaml
+
+lidar:
+  key: lidar # env info key; the dataset goal arrives as goal_${.key}
+  in_channels: 3 # xyz per point (30000 / 3 = 10000 points)
+  # Points with all coords == this are dropped before encoding. MUST match the
+  # ckpt's training config -- lidar_tworoom.yaml trains with -1.0.
+  invalid_value: -1.0
+  # AddRaycastLidarWrapper kwargs == lidar_from_h5_tworoom.yaml's `lidar` block.
+  sensor:
+    h_res: 100
+    v_res: 100
+    # The ray grid is built from the `iso` camera's own fov, so the arena fills
+    # the scan and h_fov/v_fov are NOT set here (they would be ignored).
+    match_camera_fov: true
+    # The mirror is rebuilt per episode, so the raycaster must not cache a mesh:
+    # `warp` would keep a stale one. Keep `mujoco`.
+    backend: mujoco
+    mount_camera: iso
+    frame: sensor
+    max_range: 8.0 # eye-to-far-corner is ~5.3 m from the iso pose
+    miss_value: -1.0 # sensor property; invalid_value above decides dropping
+    include_static: true
+    # Goal clouds come from the dataset (dataset-driven eval), so the wrapper
+    # must not spend a second cast on the env's goal state.
+    add_goal_lidar: false
+    # No per-point colors in this dataset (the only offline image is the top-down
+    # 2D render; sampling it would paint the goal blob onto the floor points).
+    add_rgb: false
+  # Eval-time sensor degradation -- the noise / dropout ablations. NOT part of
+  # `sensor` above: that block reproduces the scan that generated the training
+  # dataset and must stay faithful to it, while this one deliberately makes the
+  # scan worse to measure how far the world model survives it. Defaults are
+  # no-ops, so an unmodified eval behaves exactly as before.
+  perturb:
+    # Gaussian range noise (along each point's line of sight), sigma as a
+    # FRACTION of that frame's scan bounding-box diagonal. Relative because an
+    # absolute sigma is not comparable across these arenas -- 2 cm is a haze on
+    # Push-T (4.9 m across) and a catastrophe on reacher (1.4 m).
+    #   0.0025 -> ~0.33x the median point spacing in every env
+    #   0.005  -> ~0.67x the spacing; surfaces soften but stay surfaces
+    # Both stay BELOW the spacing on purpose: past it a point lands nearer a
+    # different surface than its own and the scan dissolves rather than
+    # degrades (at noise_frac 0.02 the Reacher scan dissolves and planning
+    # largely fails).
+    noise_frac: 0.0
+    # Fraction of returns marked as misses. They leave through the same
+    # invalid_value filter as genuine misses, so the model simply sees fewer
+    # points -- which is what a lost return is.
+    dropout_prob: 0.0
+    # What gets degraded. The goal cloud comes from the DATASET, not the
+    # sensor, so it stays clean unless asked for:
+    #   obs   -- live observation only (bad sensor, stored target)
+    #   both  -- goal too (tests the representation, but a failure no longer
+    #            separates "cannot see" from "aiming at the wrong thing")
+    scope: obs
+    # null -> derive from the eval `seed`, so a sweep's seeds give different
+    # noise realisations and each one replays exactly.
+    seed: null
+
+# evaluation from dataset (replay expert trajectories)
+# evaluation from dataset (replay expert trajectories)
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  # Cap on the first evaluated step: expert trajectories are recorded without
+  # early termination, so late starts already sit at the goal and make the task
+  # trivial. null disables the cap.
+  max_start_step: null
+  # NOTE eval.min_goal_displacement is CUBE-ONLY -- sample_eval_starts reads the
+  # hardcoded column `privileged/block_0_pos`, which this dataset does not have.
+  img_size: 224 # TwoRoomEnv.IMG_SIZE, and the stored pixels resolution
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/two_room.lance
+  # Replay of a dataset window into the live env. Column names follow the h5
+  # lineage this dataset was converted from (lidar_from_h5_tworoom.yaml: 2D state
+  # as pos_agent / pos_target). If the dataset instead carries `proprio`
+  # (the column name image_tworoom.yaml reads), swap both values.
+  callables:
+    # -- set state
+    - method: _set_state
+      args:
+        state:
+          value: pos_agent
+    # -- set goal state (goal_* keys come from the dataset slice end state)
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_pos_agent
+
+output:
+  # directory for results + videos. scripts/run_sweep.sh sets this per (checkpoint, seed).
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: lidar_tworoom_results.txt

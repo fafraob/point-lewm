@@ -1,0 +1,61 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: lidar_cube
+  - model: point_lewm_cube
+
+# PointViT encoder (FPS + ball-query + PointNet tokenizer -> ViT with a CLS readout),
+# geometry only, on the lidar OGB-cube dataset.
+# Run with: pixi run train --config-name=point_lewm_cube run_name=point_lewm_cube
+
+output_model_name: point_lewm_cube
+subdir: ${hydra:job.id}
+
+# Unused by the PointViT encoder (no pretrained weights exist for it); kept so
+# shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+embed_dim: 192
+history_size: 3
+
+trainer:
+  # OGB-Cube: the 50-epoch cosine schedule of the paper (the other three
+  # environments train for 10 epochs). Exports are written every epoch.
+  max_epochs: 50
+  devices: 2
+  strategy: ddp_find_unused_parameters_true
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+accumulate_grad_batches: 1
+
+loader:
+  # Every cloud runs a full (num_tokens+1)-token ViT forward AND the
+  # checkpointed tokenizer recompute gathers batch x 4 frames x num_tokens x
+  # group_size rows during backward.
+  # PER RANK: 2 GPUs x 64 = the effective batch 128 shared by every end-to-end
+  # arm (train.py syncs the SIGReg statistic across ranks, so the regularizer
+  # sees the full 128). bs=128 on one GPU peaks above 22 GB in bf16.
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5  # linear-scaled with the batch (256 -> 128 halved 1e-4)
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024

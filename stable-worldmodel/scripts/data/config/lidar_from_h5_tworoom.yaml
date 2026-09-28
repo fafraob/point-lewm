@@ -1,0 +1,55 @@
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# swm-format .h5 with 2D state (pos_agent / pos_target) + pixels + ep_len/offset.
+input: ???
+# Output .lance: every source column (pixels included) + lidar / lidar_rgb.
+output: ???
+write_mode: append
+chunk_size: 50
+ep_start: null
+ep_end: null
+
+# Mirror envs restore 2D state, not qpos/qvel, so the render check doesn't apply.
+check_render: false
+check_render_tol: 5.0
+
+env_name: swm/TwoRoomLidar-v1
+env:
+  # The goal is a task instruction, not something the sensor should see: no
+  # goal marker is mirrored, so the scan carries only walls + agent. (Set a
+  # height, e.g. 0.30, to put it back in the cloud.)
+  goal_lidar_height: null
+  # Oblique sensor bearing; the mirror frames the whole arena from here.
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+# Oblique (45/45) mirror scan -- harder than top-down: walls occlude the floor
+# behind them, the far half of the arena is foreshortened, and range varies
+# across the scan. match_camera_fov builds the ray grid from the iso camera's
+# own fov, so the arena fills the scan. Mirror rebuilds per episode, so backend
+# is forced to mujoco (warp would cache a stale mesh).
+#
+# add_rgb is OFF: the only image available offline is the top-down 2D render,
+# and sampling it would paint the goal's red blob onto the floor points --
+# handing back the very cue goal_lidar_height=null removes. Points are colored
+# by depth in the viewer instead.
+lidar:
+  h_res: 100
+  v_res: 100
+  match_camera_fov: true  # h_fov / v_fov come from the camera, not set here
+  backend: mujoco
+  mount_camera: iso
+  frame: sensor
+  max_range: 8.0  # eye-to-far-corner is ~5.3 m from the iso pose
+  miss_value: -1.0
+  include_static: true
+  add_rgb: false
+  rgb_fill_value: -1.0
+  ray_noise_std: 0.0
+  range_noise_std: 0.0

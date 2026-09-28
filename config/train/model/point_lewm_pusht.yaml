@@ -1,0 +1,99 @@
+_target_: jepa.JEPA
+
+# point_lewm (PointViT, geometry only, ground KEPT) on the PUSHT lidar dataset.
+# Identical architecture to model/point_lewm_cube.yaml and model/point_lewm_tworoom.yaml -- same
+# tokenizer, same tiny ViT, same CLS readout -- so the cube, two-room, reacher
+# and pusht runs are directly comparable. The ONLY differences are the three
+# numbers that are properties of the environment's geometry rather than of the
+# model: the workspace affine (norm_center / norm_scale) and the ball-query
+# radius, plus the token count (OGB-Cube uses 512 centres, the other
+# environments 256).
+#
+# MEASURED from pusht.lance with the method in the README's "Adding an
+# environment" paragraph (48 frames spread over the table, points with all
+# channels == -1 dropped first). The same method on two_room.lance returns
+# norm_center [4.2851, 0.0, 0.2939], norm_scale 1.7658 and a median NN-32
+# distance of 0.1270, the basis of the checked-in two-room values (see
+# model/point_lewm_tworoom.yaml).
+#
+#   valid points/frame            8000 of 10000
+#   per-axis p1                   [ 3.1710, -2.0098, -1.3701]
+#   per-axis p99                  [ 6.5800,  2.0098,  2.0389]
+#   norm_center = (p1+p99)/2      [ 4.8755,  0.0000,  0.3344]  -> [4.88, 0.0, 0.33]
+#   norm_scale  = max (p99-p1)/2    2.0098                     -> 2.01
+#   NN-32 distance                 median 0.1388  p75 0.1762  p90 0.2118
+#   group_radius = round(p75, 2)    0.1762                     -> 0.18
+#
+# The workspace is the largest of the four environments (roughly 3.4 x 4.0 x
+# 3.4 m in raw sensor units, vs two-room's 3.0 x 3.5 x 3.0), which is why both
+# norm_scale and group_radius come out ~14% above the two-room values -- the
+# same scene at a slightly larger scale, sampled by the same 10k-point sensor.
+#
+# Notes on the two judgement calls, both taken the same way as two-room:
+#  * norm_scale 2.01 is the p1/p99 half-extent, so ~2% of points land outside
+#    [-1, 1] (the true min/max half-extent is 2.34). Two-room accepts the same
+#    clipping; raise to 2.35 if you want the full extent inside the box, but
+#    then change model/point_delta_jepa_pusht.yaml identically.
+#  * group_radius 0.18 is the p75 of the NN-32 distance, so ~75% of the ball
+#    queries fill their 32-point group (two-room's 0.15 likewise sits above
+#    its median of 0.127). Tune visually with `pixi run viz-radius`.
+#
+# Keep every value here identical to model/point_delta_jepa_pusht.yaml -- the two MUST
+# stay in sync, or the point_lewm/point_delta_jepa comparison stops isolating the loss.
+# Run with: pixi run train --config-name=point_lewm_pusht run_name=point_lewm_pusht
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  # 256 FPS centers x 32 points against ~8000 valid points per cloud -- the
+  # same mild oversampling the two-room arm runs at (7988 valid). Keep in sync
+  # with model/point_delta_jepa_pusht.yaml.
+  num_tokens: 256
+  group_size: 32
+  # RAW sensor-frame units. See the measurement block in the header.
+  group_radius: 0.18
+  group_max_neighbors: 128
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only
+  # Fixed workspace affine: (coord - center) / scale -> ~[-1, 1]. Constant, NOT
+  # per-cloud (that would erase the absolute pusher/T-block position).
+  norm_center: [4.88, 0.0, 0.33]
+  norm_scale: 2.01
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

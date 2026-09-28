@@ -1,0 +1,40 @@
+# Push-T: cached Utonia tokens for the frozen-encoder arm (Utonia-WM).
+# Same table as lidar_pusht.yaml; override per run with
+# `data.dataset.name=/path/to/table.lance`.
+dataset:
+  name: ${oc.env:PLWM_DATA_ROOT,data}/pusht.lance
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 5
+  # ONLY action is read from disk: the observation column (obs.source_key) is
+  # a VIRTUAL column served from the precomputed frozen-embedding cache, which
+  # train.py registers on the dataset (attach_embedding_cache). Do NOT list
+  # the raw lidar column here; skipping the 30k-float clouds is exactly the
+  # I/O the cache removes.
+  keys_to_load:
+    - action
+
+# Cached-token observation: the same point-cloud pipeline as the lidar data
+# configs, but each "cloud" is the frame's fixed grid of precomputed Utonia
+# tokens (12 x 11 x 2 cells = 264 tokens of width embed_dim). The cache stores
+# them flattened per frame, the reshape transform turns the
+# (T, num_tokens * embed_dim) window into (T, num_tokens, embed_dim), the packed
+# collate and JEPA are unchanged, and UtoniaEncoder recognizes coordinate rows of
+# width embed_dim as tokens and passes them straight through (its live path only
+# runs in closed-loop evaluation).
+obs:
+  modality: pointcloud
+  source_key: utonia_emb     # the virtual cache column
+  target_key: points         # packed-dict key fed to the encoder (== encoder.input_key)
+  in_channels: ${embed_dim}  # "channels per point" = the per-token width
+  invalid_value: null        # tokens carry no missed-ray sentinels (and an
+                             # all-zero EMPTY cell must never be dropped)
+  # Built once by `python precompute_utonia.py --config-name=utoniawm_pusht`
+  # (docs/training.md): ~237 GB of fp16 tokens for this table, so put it on a
+  # large disk and override with `data.obs.emb_cache=/path/to/cache.npy`. The
+  # .meta.json sidecar pins the encoder config; train.py refuses a cache built
+  # with different encoder settings.
+  emb_cache: ${oc.env:PLWM_DATA_ROOT,data}/utonia_features_pusht.npy
+  # What precompute_utonia.py reads to BUILD the cache (raw lidar protocol,
+  # matching lidar_pusht.yaml):
+  live_source_key: lidar
+  live_invalid_value: -1.0

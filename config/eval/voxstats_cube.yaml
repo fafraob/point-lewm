@@ -1,0 +1,182 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Vox-WM closed-loop eval on the cube (cube.lance) -- the geometric-
+# baseline sibling of utoniawm_cube.yaml. Identical protocol to
+# lidar_cube.yaml / utoniawm_cube.yaml -- same dataset, sensor, sampling
+# and CEM settings -- so with equal (num_eval, goal_offset, max_start_step,
+# min_goal_displacement, seed) the sampled (episode, start) sequences are
+# BYTE-IDENTICAL across arms.
+#
+# The encoder is parameter-free (pc_encoders/voxstats_encoder.py): live
+# clouds are canonicalized, deduped and reduced to per-cell statistics in
+# microseconds -- no checkpoint, no cache, nothing to download. Planning cost
+# is MSE in the fixed statistics token space, matching the utoniawm protocol.
+#
+# Run one seed:      pixi run eval-lidar --config-name=voxstats_cube seed=0
+
+world:
+  env_name: swm/OGBCube-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_lidar.py to 2 * eval_budget
+  env_type: single
+  ob_type: states
+  multiview: False
+  # raw env render resolution; MegaWrapper downsizes rendered pixels to
+  # eval.img_size (which must equal the dataset's stored pixel resolution).
+  width: 224
+  height: 224
+  visualize_info: False
+  terminate_at_goal: True
+
+dataset:
+  # columns to z-score and expose to the policy (lidar is used raw)
+  stats_keys:
+    - action
+
+seed: 42
+# cem only: voxstats has no action decoder, so the ldad/ldad_cem planners of
+# the point_delta_jepa arm cannot apply (eval_lidar.py refuses them without one).
+planner: cem
+# ckpt path relative to <run>/checkpoints/. weights_final.pt
+# (= weights_epoch_100.pt) is the 100-epoch protocol's final export;
+# weights_epoch_10.pt is the equal-budget point vs point_lewm/point_delta_jepa -- override with
+# policy=voxstats_cube/weights_epoch_10.pt.
+policy: voxstats_cube/weights_final.pt
+# Which training run to evaluate. Each run is a timestamped folder under
+# experiment_logs/ holding checkpoints/<run_name>/weights_epoch_*.pt.
+#   run: null      -> newest run (latest timestamp) [default]
+#   run: <folder>  -> a specific run, e.g. run=voxstats_cube
+# logs_root is where the run folders live; cache_dir pins an exact dir (skips resolution).
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+cache_dir: null
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip
+
+lidar:
+  key: lidar # env info key; the dataset goal arrives as goal_${.key}
+  in_channels: 3
+  # Geometry-only arm: no colors are packed, panels render depth-colored.
+  contains_rgb: false
+  # Points with all coords == this are dropped before encoding -- MUST match
+  # the training pipeline (data/lidar_cube.yaml: invalid_value -1.0).
+  invalid_value: -1.0
+  # swm AddRaycastLidarWrapper kwargs -- the exact sensor that generated
+  # the cube dataset (cube.lance), copied from lidar_cube.yaml (ground truth:
+  # stable-worldmodel/scripts/data/config/lidar_from_h5.yaml). Goal lidar comes from
+  # the dataset (dataset-driven eval), not from the env task state.
+  sensor:
+    h_res: 100
+    v_res: 100
+    # Scan pattern rides the camera frustum (h_fov/v_fov would be ignored).
+    match_camera_fov: true
+    frame: sensor
+    # cube.lance was generated with the warp (GPU) backend; warp reproduces its
+    # clouds bit-exactly, while mj_multiRay casts analytic primitives vs warp's
+    # triangle meshes. Keep warp so eval sees the training sensor.
+    backend: warp
+    # Fill value for missed rays: the wrapper always emits exactly h_res*v_res
+    # = 10000 points, with no-hit rays filled at (-1,-1,-1). MUST stay -1.0 to
+    # match how the dataset was generated -- it is a sensor property;
+    # invalid_value above decides dropping (here they coincide).
+    miss_value: -1.0
+    mount_camera: front_pixels
+    add_goal_lidar: false
+    # Geometry-only model: skip the per-step camera render rgb sampling costs.
+    add_rgb: false
+    # Rays pass *through* geoms with rgba alpha < min_alpha. The arena walls
+    # are alpha 0.1; floor/cube/robot are 1.0 -- so 0.5 drops the walls only,
+    # matching the collection config.
+    min_alpha: 0.5
+  # Eval-time sensor degradation -- the noise / dropout ablations. NOT part of
+  # `sensor` above: that block reproduces the scan that generated the training
+  # dataset and must stay faithful to it, while this one deliberately makes the
+  # scan worse to measure how far the world model survives it. Defaults are
+  # no-ops, so an unmodified eval behaves exactly as before.
+  perturb:
+    # Gaussian range noise (along each point's line of sight), sigma as a
+    # FRACTION of that frame's scan bounding-box diagonal. Relative because an
+    # absolute sigma is not comparable across these arenas -- 2 cm is a haze on
+    # Push-T (4.9 m across) and a catastrophe on reacher (1.4 m).
+    #   0.0025 -> ~0.33x the median point spacing in every env
+    #   0.005  -> ~0.67x the spacing; surfaces soften but stay surfaces
+    # Both stay BELOW the spacing on purpose: past it a point lands nearer a
+    # different surface than its own and the scan dissolves rather than
+    # degrades (at noise_frac 0.02 the Reacher scan dissolves and planning
+    # largely fails).
+    noise_frac: 0.0
+    # Fraction of returns marked as misses. They leave through the same
+    # invalid_value filter as genuine misses, so the model simply sees fewer
+    # points -- which is what a lost return is.
+    dropout_prob: 0.0
+    # What gets degraded. The goal cloud comes from the DATASET, not the
+    # sensor, so it stays clean unless asked for:
+    #   obs   -- live observation only (bad sensor, stored target)
+    #   both  -- goal too (tests the representation, but a failure no longer
+    #            separates "cannot see" from "aiming at the wrong thing")
+    scope: obs
+    # null -> derive from the eval `seed`, so a sweep's seeds give different
+    # noise realisations and each one replays exactly.
+    seed: null
+
+# evaluation from dataset (replay expert trajectories)
+# evaluation from dataset (replay expert trajectories)
+eval:
+  # 50 episodes per seed (10-seed protocol: 500 total). Also the number of
+  # parallel MuJoCo envs -- one process holds all 50.
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  # Kept at the lidar_cube defaults so the sampled sequences match the
+  # lidar arms' evals (see header): no start cap, no displacement filter.
+  max_start_step: null
+  min_goal_displacement: null
+  # JSON file with fixed {episodes, start_steps} -- overrides the sampling
+  # above entirely.
+  starts_file: null
+  # MUST equal the dataset's stored pixel resolution: the live pixels buffer is
+  # written in place each step and must match the dataset-injected pixels
+  # column shape, else the rollout crashes on a shape mismatch.
+  img_size: 224
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/cube.lance
+  callables:
+    # -- set state
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    # -- set target pos (goal_* keys come from the dataset slice end state)
+    - method: set_target_pos
+      args:
+        cube_id:
+          value: 0
+          in_dataset: False
+        target_pos:
+          value: goal_privileged_block_0_pos
+        target_quat:
+          value: goal_privileged_block_0_quat
+
+output:
+  # directory for results + videos. null -> alongside the checkpoint
+  # (<cache_dir>/checkpoints/<policy dir>), or this script's dir for the
+  # random policy. Override on the CLI with output.dir=/path/to/out.
+  # NOTE hydra does NOT chdir into the run dir in this setup, so a RELATIVE
+  # dir resolves against the launch cwd (repo root) -- shared across every
+  # concurrent evaluation; scripts/run_sweep.sh therefore pins output.dir per
+  # (checkpoint, seed) on the CLI.
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: voxstats_cube_results.txt
+  # false skips the per-episode panel videos (output.video=false on the CLI;
+  # a 10-seed run writes 500 mp4s otherwise). NOTE the key is `video`
+  # (singular) -- eval_lidar.py reads cfg.output.get("video", True), so a
+  # `videos:` key here would be silently ignored.
+  video: true

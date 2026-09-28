@@ -1,0 +1,87 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: utonia_emb_cube
+  - model: utoniawm_cube
+
+# Utonia-WM: DINO-WM's frozen-encoder recipe applied to lidar point clouds
+# (ground KEPT). Frozen Utonia foundation encoder, trainable token predictor,
+# prediction loss ONLY -- no SIGReg (targets are fixed frozen features,
+# collapse is impossible) and no LDAD. The benchmark
+# counterpart of DINO-WM's frozen-DINOv2 recipe for the point_lewm / point_delta_jepa
+# comparison.
+#
+# BEFORE the first run (once per machine + encoder variant):
+#   pixi run python precompute_utonia.py --config-name=utoniawm_cube
+# which downloads the Utonia checkpoint if needed and writes the frozen
+# per-frame token cache the data config points at (data.obs.emb_cache).
+# Training refuses to start without it. (Live on-the-fly encoding is possible
+# by overriding data=lidar_cube, but at ~110 ms/cloud it is only meant for
+# debugging.)
+# Run with: pixi run train --config-name=utoniawm_cube run_name=utoniawm_cube
+
+output_model_name: utoniawm_cube
+subdir: ${hydra:job.id}
+
+# Unused by this arm; kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Per-TOKEN latent width: same as every other arm's latent, so the predictor's
+# width matches theirs (it just runs over num_tokens of them per frame). The
+# encoder compresses its 1152-d per-cell pooled frozen features to this via a
+# fixed random orthogonal projection (see model/utoniawm_cube.yaml).
+embed_dim: 192
+history_size: 3
+
+# Token grid resolution (see model/utoniawm_cube.yaml). 8 x 8 x 4 = 256 tokens per
+# frame == DINO-WM's patch count. num_tokens is derived so the encoder grid and
+# the predictor can never disagree.
+grid_x: 8
+grid_y: 8
+grid_z: 4
+num_tokens: ${eval:'${grid_x} * ${grid_y} * ${grid_z}'}
+
+trainer:
+  # 100 epochs, DELIBERATELY far beyond the end-to-end arms (10 epochs, and on
+  # OGB-Cube a 50-epoch cosine schedule whose early checkpoints are reported).
+  # Like Vox-WM, this arm's encoder is not trained, so all fitted capacity sits
+  # in the predictor, which keeps improving after the end-to-end arms converge.
+  # Checkpoints are exported every epoch, so weights_epoch_10.pt remains
+  # available for an equal-budget comparison.
+  max_epochs: 100
+  devices: 2
+  strategy: ddp_find_unused_parameters_true
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+accumulate_grad_batches: 1
+
+loader:
+  # PER RANK: with trainer.devices=2 this is 2 x 256 x 1 = EFFECTIVE BATCH 512,
+  # the Utonia-WM protocol, deliberately 4x the other arms' 128 and paired with the lr
+  # bump below (frozen targets, prediction-only loss). A single-GPU run must
+  # override loader.batch_size=512 (or add ++accumulate_grad_batches=2) to
+  # match. Unlike the pooled-latent arms the windows are NOT tiny: 4 frames x
+  # 256 tokens x 192 dims fp16 is ~390 kB, so a batch reads ~100 MB and an
+  # epoch streams ~0.7 TB off the cache -- on a slow disk that, not the GPU,
+  # is the bottleneck; watch the first epoch and drop embed_dim (or grid_z) if
+  # GPU utilization stays low.
+  batch_size: 256
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 1e-3  # raised together with the effective batch (the end-to-end arms use 5e-5 at 128)
+  weight_decay: 1e-3
+
+num_preds: 1
+
+# Prediction loss only (see header).
+loss: {}

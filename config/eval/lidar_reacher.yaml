@@ -1,0 +1,178 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Lidar (point-cloud) eval for the reacher arm -- point-cloud sibling of
+# config/eval/image_reacher.yaml, structured like lidar_cube.yaml.
+#
+# THE ENV IS NOT swm/ReacherDMControl-v0. The lidar dataset was written against
+# swm/Reacher3D-v0 (stable_worldmodel/envs/reacher3d.py), a 3D re-skin of the
+# dm_control two-link reacher: same dynamics (link lengths recovered from the
+# source dataset's own qpos/finger_pos), but raised cuboid links over a ground
+# plane, so a scan returns real height structure instead of a flat overlay. The
+# clouds in the dataset are of THAT scene; the dm_control env would produce
+# different geometry entirely.
+#
+# Reacher3D-v0, the `iso` camera and the sensor's `match_camera_fov` live in the
+# vendored stable-worldmodel/ package.
+#
+# SCORING is the env's, exactly as in image_reacher.yaml: swm ends an
+# episode as a success on the env's `terminated` flag, and swm/Reacher3D-v0
+# implements the dm_control arm's qpos_match rule -- every joint within 0.05 rad
+# of the pose given to set_target_qpos (the callable below). The two reacher
+# arms, pixel and lidar, are therefore scored by the same rule at the same
+# tolerance. The goal is JOINT ANGLES rather than a target object, so no sensor
+# can see it: the model still has to plan toward the goal CLOUD, and the angles
+# only decide whether it arrived.
+#
+# `world.iso_*` and `lidar.sensor` are copied from the config that GENERATED the
+# dataset -- stable-worldmodel's scripts/data/config/lidar_from_h5_reacher.yaml
+# -- and must stay in sync.
+
+world:
+  env_name: swm/Reacher3D-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_lidar.py to 2 * eval_budget
+  # --- env kwargs, forwarded by swm.World to the env ---
+  # Physics substeps per env step. This must equal the dataset's: the source
+  # reacher data held each action for `DMControlWrapper.action_repeat = 2`
+  # physics substeps of 0.02 s, while Reacher3DEnv defaults to frame_skip=1.
+  # Re-simulating recorded transitions from reacher.lance gives a mean qpos
+  # error of 0.048 rad at 1 substep and 0.012 rad at 2, so one stored row is
+  # two substeps. With a mismatch, a planned action moves the arm a constant
+  # factor less than the world model expects: the arm still approaches the goal
+  # (each replan asks for more), but terminal precision is capped.
+  frame_skip: 2
+  # Oblique sensor bearing: the `iso` camera is framed on the workspace disc
+  # from here and the scan inherits its fov (match_camera_fov), so these two
+  # numbers are part of the sensor definition. (No goal object exists in this
+  # scene, so there is no goal_lidar_height to set, unlike the two mirrors.)
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+dataset:
+  # columns to z-score and expose to the policy (the lidar cloud is used raw)
+  stats_keys:
+    - action
+
+seed: 42
+# Planner mode (Delta-JEPA checkpoints required for the ldad modes):
+#   cem       plain CEM from a zero-initialized sampling mean
+#   ldad_cem  CEM warm-started with LDAD-decoded actions D(z_goal - z_now)
+#             (see LidarLDADPlanAdapter)
+#   ldad      the decoded plan executed directly each replan -- no CEM
+#             (see LDADSolver; isolates the decoder as an amortized policy)
+# eval_lidar.py defaults this to cem when absent, but Hydra's struct mode then
+# rejects a plain `planner=...` override ("Key 'planner' is not in struct"), so
+# the key is declared here -- a sweep must be able to set it.
+planner: cem
+# ckpt path relative to <run>/checkpoints/, or `random` for the baseline.
+# Checkpoint to evaluate, relative to <cache_dir>/checkpoints/ (or `random`).
+# Default: the released checkpoints downloaded into <repo>/checkpoints/<env>/<model>/
+# (scripts/download_checkpoints.py), e.g. policy=reacher/point-lewm/weights.pt.
+# For a training run of your own, run=<folder under logs_root> selects
+# <logs_root>/<run>/checkpoints/<policy> instead (run= takes precedence).
+policy: reacher/point-delta-jepa/weights.pt
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+cache_dir: ${hydra:runtime.cwd}
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip, == config/train/data/lidar_reacher.yaml
+
+lidar:
+  key: lidar # env info key; the dataset goal arrives as goal_${.key}
+  in_channels: 3 # xyz per point (30000 / 3 = 10000), confirmed on the dataset
+  # Confirmed on the dataset: only ~14 of 10000 points per frame are (-1,-1,-1)
+  # -- the iso scan lands almost entirely on geometry. MUST match training.
+  invalid_value: -1.0
+  # AddRaycastLidarWrapper kwargs == lidar_from_h5_reacher.yaml's `lidar` block.
+  sensor:
+    h_res: 100
+    v_res: 100
+    match_camera_fov: true # ray grid comes from the iso camera's fov
+    # This scene is a native MuJoCo model rebuilt once, so `warp` would work
+    # too; `mujoco` keeps it identical to the two-room / pusht arms.
+    backend: mujoco
+    mount_camera: iso
+    frame: sensor
+    max_range: 4.0 # workspace is ~0.6 m across; the eye sits 0.80 m out
+    miss_value: -1.0 # sensor property; invalid_value above decides dropping
+    include_static: true
+    add_goal_lidar: false # goal clouds come from the dataset
+    add_rgb: false # no colors in this dataset
+  # Eval-time sensor degradation -- the noise / dropout ablations. NOT part of
+  # `sensor` above: that block reproduces the scan that generated the training
+  # dataset and must stay faithful to it, while this one deliberately makes the
+  # scan worse to measure how far the world model survives it. Defaults are
+  # no-ops, so an unmodified eval behaves exactly as before.
+  perturb:
+    # Gaussian range noise (along each point's line of sight), sigma as a
+    # FRACTION of that frame's scan bounding-box diagonal. Relative because an
+    # absolute sigma is not comparable across these arenas -- 2 cm is a haze on
+    # Push-T (4.9 m across) and a catastrophe on reacher (1.4 m).
+    #   0.0025 -> ~0.33x the median point spacing in every env
+    #   0.005  -> ~0.67x the spacing; surfaces soften but stay surfaces
+    # Both stay BELOW the spacing on purpose: past it a point lands nearer a
+    # different surface than its own and the scan dissolves rather than
+    # degrades (at noise_frac 0.02 the Reacher scan dissolves and planning
+    # largely fails).
+    noise_frac: 0.0
+    # Fraction of returns marked as misses. They leave through the same
+    # invalid_value filter as genuine misses, so the model simply sees fewer
+    # points -- which is what a lost return is.
+    dropout_prob: 0.0
+    # What gets degraded. The goal cloud comes from the DATASET, not the
+    # sensor, so it stays clean unless asked for:
+    #   obs   -- live observation only (bad sensor, stored target)
+    #   both  -- goal too (tests the representation, but a failure no longer
+    #            separates "cannot see" from "aiming at the wrong thing")
+    scope: obs
+    # null -> derive from the eval `seed`, so a sweep's seeds give different
+    # noise realisations and each one replays exactly.
+    seed: null
+
+# evaluation from dataset (replay expert trajectories)
+# evaluation from dataset (replay expert trajectories)
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  # See lidar_tworoom.yaml. Reacher episodes are ~201 steps, so 20 keeps starts
+  # early; null disables the cap.
+  max_start_step: null
+  # eval.min_goal_displacement is CUBE-ONLY (hardcoded `privileged/block_0_pos`).
+  img_size: 224 # must equal the stored pixels resolution
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/reacher.lance
+  # Identical to image_reacher.yaml's callables -- env API calls, and both
+  # resolve on Reacher3DEnv itself: set_state, and set_target_qpos, the
+  # qpos-match goal test the env implements (vendored stable-worldmodel).
+  # goal_qpos is the dataset row at start + goal_offset_steps -- the SAME row the
+  # goal point cloud comes from, so the success test and the planning target
+  # cannot disagree.
+  #
+  # NOTE swm's _apply_callables SKIPS a method the env does not have, and does it
+  # silently: against a stable-worldmodel whose Reacher3D lacks set_target_qpos,
+  # the call is ignored and every episode scores as a failure instead of erroring.
+  callables:
+    # -- set state
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    # -- set the goal pose the episode is scored against
+    - method: set_target_qpos
+      args:
+        target_qpos:
+          value: goal_qpos
+
+output:
+  # directory for results + videos. scripts/run_sweep.sh sets this per (checkpoint, seed).
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: lidar_reacher_results.txt

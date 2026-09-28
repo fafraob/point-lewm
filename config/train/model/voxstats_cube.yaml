@@ -1,0 +1,62 @@
+_target_: jepa.JEPA
+
+# Vox-WM arm (ground KEPT): the GEOMETRIC BASELINE for Utonia-WM. Same
+# recipe -- deterministic parameter-free encoder, trainable token predictor,
+# prediction loss only, planning cost in the fixed feature space -- but the
+# per-cell token is plain statistics of the cell's 3D points (occupancy,
+# log-count, mean/std/cov/min/max of cell-relative offsets, 2x2x2
+# sub-occupancy; 25 dims) instead of frozen Utonia features. See
+# pc_encoders/voxstats_encoder.py for the full recipe. The ONLY intended
+# difference from model/utoniawm_cube.yaml is what a token holds: preprocessing,
+# token grid, predictor architecture and loss are identical, so the pair
+# ablates the frozen foundation encoder at fixed tokenization.
+#
+# KEEP THE GEOMETRY IN SYNC with model/utoniawm_cube.yaml (grid_bounds,
+# coord_scale, grid_size, canonical_plane, canonical_center) --
+# tests/test_voxstats.py::test_configs_mirror_utoniawm enforces it.
+# Run with: pixi run train --config-name=voxstats_cube run_name=voxstats_cube
+encoder:
+  _target_: pc_encoders.voxstats_encoder.VoxelStatsEncoder
+  # Per-TOKEN width handed to the predictor (>= 25, the statistics width).
+  # 192 lifts the 25 statistics through a FIXED orthonormal matrix (isometric,
+  # training-free, seeded by lift_seed) so the predictor is the SAME module as
+  # utoniawm's; 25 keeps raw tokens and a narrower predictor.
+  embed_dim: ${embed_dim}
+  lift_seed: 0
+  in_channels: 3
+  # Token grid + canonical frame: copied from model/utoniawm_cube.yaml -- same
+  # cells, same frame, same dedup resolution.
+  # quoted so YAML does not try to parse ${...} as a flow mapping; a
+  # whole-string interpolation keeps its int type
+  grid_dims: ["${grid_x}", "${grid_y}", "${grid_z}"]
+  grid_bounds: [[-0.80, -0.82, -0.01], [0.90, 0.82, 0.50]]
+  coord_scale: 4.0
+  grid_size: 0.01
+  canonical_plane: [0.628104, 0.0, -0.778129, -0.638995]
+  canonical_center: [1.27, 0.0, 0.25]
+  # Fixed scale of the log-count channel (log1p(n)/log1p(count_norm) ~ 1 at
+  # count_norm deduped points in a cell). A config constant by design -- data-
+  # derived normalization would break the deterministic train == eval latents.
+  count_norm: 256
+
+# DINO-WM's own predictor, identical block to model/utoniawm_cube.yaml (same
+# ${embed_dim} = 192, so the module is parameter-for-parameter the same).
+predictor:
+  _target_: module.TokenPredictor
+  num_frames: ${history_size}
+  num_tokens: ${num_tokens}
+  input_dim: ${embed_dim}
+  action_emb_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  dim_head: 64
+  mlp_dim: 2048
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}

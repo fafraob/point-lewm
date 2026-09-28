@@ -1,0 +1,281 @@
+table,environment,family,observation,method,seed,num_episodes,success_rate
+Table 2,Two-Room,-,-,Random,1,50,32.0
+Table 2,Two-Room,-,-,Random,25,50,26.0
+Table 2,Two-Room,-,-,Random,35,50,18.0
+Table 2,Two-Room,-,-,Random,36,50,28.0
+Table 2,Two-Room,-,-,Random,40,50,24.0
+Table 2,Two-Room,-,-,Random,42,50,26.0
+Table 2,Two-Room,-,-,Random,65,50,22.0
+Table 2,Two-Room,-,-,Random,80,50,24.0
+Table 2,Two-Room,-,-,Random,83,50,22.0
+Table 2,Two-Room,-,-,Random,99,50,30.0
+Table 2,Two-Room,SIGReg,Image,LeWM,1,50,94.0
+Table 2,Two-Room,SIGReg,Image,LeWM,25,50,92.0
+Table 2,Two-Room,SIGReg,Image,LeWM,35,50,84.0
+Table 2,Two-Room,SIGReg,Image,LeWM,36,50,82.0
+Table 2,Two-Room,SIGReg,Image,LeWM,40,50,84.0
+Table 2,Two-Room,SIGReg,Image,LeWM,42,50,84.0
+Table 2,Two-Room,SIGReg,Image,LeWM,65,50,88.0
+Table 2,Two-Room,SIGReg,Image,LeWM,80,50,78.0
+Table 2,Two-Room,SIGReg,Image,LeWM,83,50,92.0
+Table 2,Two-Room,SIGReg,Image,LeWM,99,50,78.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,1,50,98.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,25,50,88.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,35,50,86.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,36,50,84.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,40,50,82.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,42,50,90.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,65,50,86.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,80,50,84.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,83,50,86.0
+Table 2,Two-Room,SIGReg,Points,Point-LeWM,99,50,86.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,1,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,25,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,35,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,36,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,40,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,42,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,65,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,80,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,83,50,100.0
+Table 2,Two-Room,Act.-recon.,Points,Point-Delta-JEPA,99,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,1,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,25,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,35,50,98.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,36,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,40,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,42,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,65,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,80,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,83,50,100.0
+Table 2,Two-Room,Frozen enc.,Image,DINO-WM,99,50,100.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,1,50,94.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,25,50,94.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,35,50,94.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,36,50,96.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,40,50,92.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,42,50,96.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,65,50,96.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,80,50,90.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,83,50,94.0
+Table 2,Two-Room,Frozen enc.,Points,Utonia-WM,99,50,94.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,1,50,90.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,25,50,82.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,35,50,84.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,36,50,78.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,40,50,78.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,42,50,90.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,65,50,92.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,80,50,80.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,83,50,84.0
+Table 2,Two-Room,Frozen enc.,Points,Vox-WM,99,50,80.0
+Table 2,Reacher,-,-,Random,1,50,20.0
+Table 2,Reacher,-,-,Random,25,50,6.0
+Table 2,Reacher,-,-,Random,35,50,6.0
+Table 2,Reacher,-,-,Random,36,50,10.0
+Table 2,Reacher,-,-,Random,40,50,10.0
+Table 2,Reacher,-,-,Random,42,50,10.0
+Table 2,Reacher,-,-,Random,65,50,10.0
+Table 2,Reacher,-,-,Random,80,50,14.0
+Table 2,Reacher,-,-,Random,83,50,10.0
+Table 2,Reacher,-,-,Random,99,50,12.0
+Table 2,Reacher,SIGReg,Image,LeWM,1,50,94.0
+Table 2,Reacher,SIGReg,Image,LeWM,25,50,78.0
+Table 2,Reacher,SIGReg,Image,LeWM,35,50,84.0
+Table 2,Reacher,SIGReg,Image,LeWM,36,50,80.0
+Table 2,Reacher,SIGReg,Image,LeWM,40,50,80.0
+Table 2,Reacher,SIGReg,Image,LeWM,42,50,76.0
+Table 2,Reacher,SIGReg,Image,LeWM,65,50,86.0
+Table 2,Reacher,SIGReg,Image,LeWM,80,50,80.0
+Table 2,Reacher,SIGReg,Image,LeWM,83,50,76.0
+Table 2,Reacher,SIGReg,Image,LeWM,99,50,86.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,1,50,84.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,25,50,84.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,35,50,82.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,36,50,82.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,40,50,74.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,42,50,80.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,65,50,88.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,80,50,80.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,83,50,76.0
+Table 2,Reacher,SIGReg,Points,Point-LeWM,99,50,74.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,1,50,76.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,25,50,80.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,35,50,74.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,36,50,82.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,40,50,84.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,42,50,74.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,65,50,70.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,80,50,76.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,83,50,82.0
+Table 2,Reacher,Act.-recon.,Points,Point-Delta-JEPA,99,50,78.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,1,50,78.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,25,50,72.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,35,50,74.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,36,50,84.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,40,50,82.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,42,50,78.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,65,50,78.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,80,50,70.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,83,50,82.0
+Table 2,Reacher,Frozen enc.,Image,DINO-WM,99,50,72.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,1,50,72.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,25,50,78.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,35,50,70.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,36,50,66.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,40,50,68.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,42,50,70.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,65,50,68.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,80,50,72.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,83,50,72.0
+Table 2,Reacher,Frozen enc.,Points,Utonia-WM,99,50,76.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,1,50,76.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,25,50,80.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,35,50,60.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,36,50,78.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,40,50,66.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,42,50,68.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,65,50,66.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,80,50,78.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,83,50,76.0
+Table 2,Reacher,Frozen enc.,Points,Vox-WM,99,50,70.0
+Table 2,Push-T,-,-,Random,1,50,2.0
+Table 2,Push-T,-,-,Random,25,50,4.0
+Table 2,Push-T,-,-,Random,35,50,2.0
+Table 2,Push-T,-,-,Random,36,50,2.0
+Table 2,Push-T,-,-,Random,40,50,0.0
+Table 2,Push-T,-,-,Random,42,50,2.0
+Table 2,Push-T,-,-,Random,65,50,4.0
+Table 2,Push-T,-,-,Random,80,50,2.0
+Table 2,Push-T,-,-,Random,83,50,2.0
+Table 2,Push-T,-,-,Random,99,50,4.0
+Table 2,Push-T,SIGReg,Image,LeWM,1,50,90.0
+Table 2,Push-T,SIGReg,Image,LeWM,25,50,94.0
+Table 2,Push-T,SIGReg,Image,LeWM,35,50,84.0
+Table 2,Push-T,SIGReg,Image,LeWM,36,50,86.0
+Table 2,Push-T,SIGReg,Image,LeWM,40,50,80.0
+Table 2,Push-T,SIGReg,Image,LeWM,42,50,92.0
+Table 2,Push-T,SIGReg,Image,LeWM,65,50,84.0
+Table 2,Push-T,SIGReg,Image,LeWM,80,50,80.0
+Table 2,Push-T,SIGReg,Image,LeWM,83,50,82.0
+Table 2,Push-T,SIGReg,Image,LeWM,99,50,92.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,1,50,86.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,25,50,84.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,35,50,84.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,36,50,84.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,40,50,82.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,42,50,90.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,65,50,82.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,80,50,78.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,83,50,80.0
+Table 2,Push-T,SIGReg,Points,Point-LeWM,99,50,86.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,1,50,66.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,25,50,60.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,35,50,68.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,36,50,74.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,40,50,82.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,42,50,76.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,65,50,78.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,80,50,64.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,83,50,62.0
+Table 2,Push-T,Act.-recon.,Points,Point-Delta-JEPA,99,50,78.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,1,50,70.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,25,50,74.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,35,50,88.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,36,50,60.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,40,50,84.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,42,50,76.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,65,50,84.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,80,50,62.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,83,50,80.0
+Table 2,Push-T,Frozen enc.,Image,DINO-WM,99,50,82.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,1,50,38.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,25,50,60.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,35,50,42.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,36,50,40.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,40,50,50.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,42,50,42.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,65,50,50.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,80,50,50.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,83,50,44.0
+Table 2,Push-T,Frozen enc.,Points,Utonia-WM,99,50,50.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,1,50,52.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,25,50,62.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,35,50,58.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,36,50,54.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,40,50,60.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,42,50,48.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,65,50,54.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,80,50,62.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,83,50,50.0
+Table 2,Push-T,Frozen enc.,Points,Vox-WM,99,50,58.0
+Table 2,OGB-Cube,-,-,Random,1,50,42.0
+Table 2,OGB-Cube,-,-,Random,25,50,32.0
+Table 2,OGB-Cube,-,-,Random,35,50,58.0
+Table 2,OGB-Cube,-,-,Random,36,50,58.0
+Table 2,OGB-Cube,-,-,Random,40,50,50.0
+Table 2,OGB-Cube,-,-,Random,42,50,38.0
+Table 2,OGB-Cube,-,-,Random,65,50,40.0
+Table 2,OGB-Cube,-,-,Random,80,50,46.0
+Table 2,OGB-Cube,-,-,Random,83,50,52.0
+Table 2,OGB-Cube,-,-,Random,99,50,44.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,1,50,54.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,25,50,60.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,35,50,84.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,36,50,80.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,40,50,68.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,42,50,70.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,65,50,64.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,80,50,66.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,83,50,76.0
+Table 2,OGB-Cube,SIGReg,Image,LeWM,99,50,76.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,1,50,62.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,25,50,56.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,35,50,72.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,36,50,70.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,40,50,72.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,42,50,66.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,65,50,58.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,80,50,64.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,83,50,68.0
+Table 2,OGB-Cube,SIGReg,Points,Point-LeWM,99,50,72.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,1,50,82.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,25,50,84.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,35,50,84.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,36,50,88.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,40,50,88.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,42,50,80.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,65,50,78.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,80,50,78.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,83,50,86.0
+Table 2,OGB-Cube,Act.-recon.,Points,Point-Delta-JEPA,99,50,86.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,1,50,72.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,25,50,72.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,35,50,88.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,36,50,80.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,40,50,86.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,42,50,78.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,65,50,78.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,80,50,72.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,83,50,72.0
+Table 2,OGB-Cube,Frozen enc.,Image,DINO-WM,99,50,88.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,1,50,62.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,25,50,60.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,35,50,80.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,36,50,76.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,40,50,72.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,42,50,74.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,65,50,62.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,80,50,70.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,83,50,74.0
+Table 2,OGB-Cube,Frozen enc.,Points,Utonia-WM,99,50,82.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,1,50,54.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,25,50,60.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,35,50,74.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,36,50,76.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,40,50,70.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,42,50,64.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,65,50,48.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,80,50,70.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,83,50,64.0
+Table 2,OGB-Cube,Frozen enc.,Points,Vox-WM,99,50,72.0

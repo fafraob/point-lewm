@@ -1,0 +1,89 @@
+# Delta-JEPA on PIXELS, Push-T: LeWM's image stack with SIGReg REPLACED by the
+# Latent Difference Action Decoder. Differs from image_delta_jepa_cube.yaml ONLY
+# in the dataset and the output name -- images carry no per-environment
+# geometry, so there is nothing else to re-tune. READ THAT FILE'S HEADER: it
+# documents the 6-frame LDAD window protocol, why closed-loop evaluation needs
+# no config change, and exactly what the comparison against the released image
+# LeWM checkpoint does and does not control.
+#
+# THE ENV IS swm/PushT-v1, the original 2D pymunk environment
+# (config/eval/image_pusht.yaml).
+#
+# WALL TIME: Push-T is the long table on the image side too. Delta-JEPA's loss is
+# per-sample, so this is the arm that gains most from the second GPU:
+#   pixi run train --config-name=image_delta_jepa_pusht run_name=image_delta_jepa_pusht \
+#       trainer.devices=2 accumulate_grad_batches=1
+# is exactly the single-GPU 64 x 2 objective at effective batch 128.
+# Run with: pixi run train --config-name=image_delta_jepa_pusht run_name=image_delta_jepa_pusht
+defaults:
+  - launcher: local
+  - data: image_pusht
+  - model: image_delta_jepa
+  - _self_   # last, so the data.dataset.num_steps override below wins
+
+output_model_name: image_delta_jepa_pusht
+subdir: ${hydra:job.id}
+
+# Unused by the from-scratch ViT (LeWM trains the pixel encoder end-to-end);
+# kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+# DataLoader workers: raise this toward the core count of the machine (the
+# paper's runs used 16 on 64-core nodes).
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Pixel resolution the ViT and the preprocessor agree on. MUST equal the eval
+# config's eval.img_size (224 everywhere here) and the table's stored resolution.
+img_size: 224
+embed_dim: 192
+
+# LDAD horizon N -- the single knob that sizes the window protocol:
+# num_steps = N + 1 frames, history_size = num_steps - num_preds.
+ldad_horizon: 5
+history_size: ${eval:'${ldad_horizon} + 1 - ${num_preds}'}
+
+data:
+  dataset:
+    num_steps: ${eval:'${ldad_horizon} + 1'}
+
+trainer:
+  # The Delta-JEPA paper's own protocol, deliberately NOT this repository's
+  # 10-epoch point-cloud protocol. The cosine is sized from THIS value (train.py
+  # sizes it in optimizer steps), so a run cut short never anneals: decide the
+  # number before the run rather than shortening the schedule.
+  max_epochs: 50
+  devices: 1
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+# Effective batch 128 (= every other arm) as micro-batch 64 x 2 accumulation on
+# one GPU. Equivalence to a true bs=128 step is exact BECAUSE sigreg is gone --
+# no remaining loss term sees batch statistics -- and train.py averages the
+# accumulated loss and sizes the cosine in optimizer steps. On two GPUs use
+# `trainer.devices=2 accumulate_grad_batches=1` for the same objective at half
+# the wall time. Pixels are lighter than 8k-point clouds, so if the GPU has
+# headroom `loader.batch_size=128 ++accumulate_grad_batches=1` is again the same
+# objective at one optimizer step per batch; keep
+# devices x batch_size x accumulate_grad_batches = 128 either way.
+accumulate_grad_batches: 2
+
+loader:
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5  # the image LeWM baseline's lr AND the Delta-JEPA paper's
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  # Faithful Delta-JEPA: NO sigreg block -- LDAD is the anti-collapse mechanism.
+  action:
+    weight: 10.0  # the paper's lambda

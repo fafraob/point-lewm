@@ -1,0 +1,34 @@
+# @package _global_
+# Local launcher configuration (no scheduler)
+
+defaults:
+  - override /hydra/launcher: basic
+
+# Keep the process working directory at the project root (chdir: False) and make
+# Hydra's per-run directory the SAME run folder train.py logs into, so a
+# run's Hydra record (.hydra/ + train.log) lives beside its TensorBoard events and
+# checkpoints. Runs live under <repo>/experiment_logs, or $PLWM_LOGS_ROOT when
+# that is set (see paths.py; the eval configs read the same variable).
+# The folder is named by `run_name` (default: timestamp + output_model_name).
+# The evaluation sweeps address runs by name, e.g. run=point_lewm_cube, so train with
+#   pixi run train --config-name=point_lewm_cube run_name=point_lewm_cube
+run_name: ${now:%Y-%m-%d_%H-%M-%S}_${output_model_name}
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}/${run_name}
+  sweep:
+    dir: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+    subdir: ${now:%Y-%m-%d_%H-%M-%S}_${output_model_name}_${hydra.job.num}
+
+wandb:
+  enabled: False
+  config:
+    entity: null
+    project: point-cloud-world-models
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False

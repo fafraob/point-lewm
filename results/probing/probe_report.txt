@@ -1,0 +1,33 @@
+
+=== pusht  (stride 10, 46530 test frames, seed 0) ===
+    Point-LeWM: point_lewm_<env> checkpoint (D=192)
+    Point-Delta-JEPA: point_deltajepa_<env> checkpoint (D=192)
+target                                       dim                                        Point-LeWM                                  Point-Delta-JEPA
+                                                     lin MSE   lin R2     mlp MSE   mlp R2             lin MSE   lin R2     mlp MSE   mlp R2        
+agent location (3D, sensor)                    3   7.744e-03    0.955   5.888e-04    0.997           7.351e-03    0.957   1.792e-03    0.989        
+block (T) location (3D, sensor)                3   3.639e-03    0.958   1.929e-04    0.998           4.691e-03    0.946   7.255e-04    0.992        
+block angle (heading vec, sensor)              3   2.656e-02    0.891   1.980e-03    0.992           8.381e-02    0.657   9.329e-03    0.962        
+
+=== reacher  (stride 10, 40196 test frames, seed 0) ===
+    Point-LeWM: point_lewm_<env> checkpoint (D=192)
+    Point-Delta-JEPA: point_deltajepa_<env> checkpoint (D=192)
+target                                       dim                                        Point-LeWM                                  Point-Delta-JEPA
+                                                     lin MSE   lin R2     mlp MSE   mlp R2             lin MSE   lin R2     mlp MSE   mlp R2        
+finger position (3D, sensor)                   3   2.889e-06    1.000   5.012e-07    1.000           1.571e-05    0.999   2.398e-06    1.000        
+joint position (FK elbow anchor, 3D, sensor)   3   1.853e-06    1.000   1.841e-07    1.000           3.916e-06    0.999   1.170e-06    1.000        
+joint position (raw angles, rad)               2   1.911e+00    0.463   1.917e+00    0.461           1.910e+00    0.463   1.911e+00    0.463        
+joint angles (link heading vecs, sensor)       6   1.474e-04    1.000   2.051e-05    1.000           6.096e-04    0.998   1.056e-04    1.000        
+
+=== cube  (stride 10, 40196 test frames, seed 0) ===
+    Point-LeWM: point_lewm_<env> checkpoint (D=192)
+    Point-Delta-JEPA: point_deltajepa_<env> checkpoint (D=192)
+target                                       dim                                        Point-LeWM                                  Point-Delta-JEPA
+                                                     lin MSE   lin R2     mlp MSE   mlp R2             lin MSE   lin R2     mlp MSE   mlp R2        
+joint position (raw 6 angles, rad)             6   4.953e-01    0.114   5.011e-01    0.104           4.312e-01    0.229   4.311e-01    0.229        
+joint position (FK anchors j2-j6, 3D, sensor)  15   5.630e-05    0.992   4.382e-06    0.999           1.048e-05    0.998   3.048e-06    1.000        
+joint velocity (raw, rad/s)                    6   1.416e-01    0.021   1.299e-01    0.102           7.133e-02    0.507   5.412e-02    0.626        
+end-effector position (3D, sensor)             3   1.025e-04    0.992   1.410e-05    0.999           1.316e-05    0.999   4.546e-06    1.000        
+end-effector yaw (heading vec, sensor)         3   3.303e-01   -0.001   3.319e-01   -0.006           3.206e-01    0.029   3.214e-01    0.026        
+block position (3D, sensor)                    3   6.025e-04    0.956   5.515e-05    0.996           5.069e-05    0.996   8.111e-06    0.999        
+block quaternion (raw wxyz, world)             4   1.566e-01   -0.001   1.576e-01   -0.007           1.565e-01   -0.001   1.569e-01   -0.003        
+block yaw (heading vec, sensor)                3   3.334e-01   -0.001   3.350e-01   -0.006           3.333e-01   -0.001   3.352e-01   -0.006        

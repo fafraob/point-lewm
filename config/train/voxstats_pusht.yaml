@@ -1,0 +1,70 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: lidar_pusht
+  - model: voxstats_pusht
+
+# Vox-WM (per-cell point statistics, geometric baseline for Utonia-WM) on
+# the PUSHT lidar dataset. Identical protocol to config/train/voxstats_cube.yaml
+# (the cube arm) -- only the dataset and the environment-geometry numbers in
+# the model config differ; the token grid matches
+# config/train/utoniawm_pusht.yaml (12 x 11 x 2 = 264 tokens, App. A).
+#
+# NO precompute step (see voxstats_cube.yaml): raw clouds are encoded live.
+# Run length: 2.34 M rows, ~2.5x the two-room table (see data/lidar_pusht.yaml),
+# and this arm runs 100 epochs while streaming RAW clouds, so train on 2 GPUs
+# (effective batch 512) and watch the first-epoch ETA.
+# Run with: pixi run train --config-name=voxstats_pusht run_name=voxstats_pusht
+
+output_model_name: voxstats_pusht
+subdir: ${hydra:job.id}
+
+# Unused by this arm; kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Per-TOKEN latent width: 25-dim statistics lifted to the Utonia-WM width by
+# a fixed orthonormal matrix (see voxstats_cube.yaml).
+embed_dim: 192
+history_size: 3
+
+# Token grid resolution: same as config/train/utoniawm_pusht.yaml (12x11x2 =
+# 264 tokens; the pusht table is ~5 x 4.3 m and only ~18 cm tall, so xy gets
+# the budget and z keeps two layers: ground and object body).
+grid_x: 12
+grid_y: 11
+grid_z: 2
+num_tokens: ${eval:'${grid_x} * ${grid_y} * ${grid_z}'}
+
+trainer:
+  # Follows voxstats_cube.yaml (the cube arm) -- keep the two in sync.
+  max_epochs: 100
+  devices: 2
+  strategy: ddp
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+accumulate_grad_batches: 1
+
+loader:
+  # PER RANK (see voxstats_cube.yaml): a 2-GPU run gives 2 x 256 x 1 =
+  # effective batch 512; a 1-GPU run must override loader.batch_size=512
+  # (or add ++accumulate_grad_batches=2) to match.
+  batch_size: 256
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 3e-4  # Push-T only: at 1e-3 the predictor diverged late in training; the reported run used 3e-4
+  weight_decay: 1e-3
+
+num_preds: 1
+
+# Prediction loss only (deterministic targets -- see voxstats_cube.yaml).
+loss: {}

@@ -1,0 +1,34 @@
+# OGB-Cube IMAGE dataset -- the pixel sibling of lidar_cube.yaml, and the table
+# the image arms train on. It is the released image dataset itself
+# (`cube_single_expert.h5`, HF repo quentinll/lewm-cube, docs/data.md), before
+# the LiDAR conversion; it lives under $PLWM_DATA_ROOT (default <repo>/data).
+# Override per run with `data.dataset.name=/path/to/file.h5`.
+#
+# 10,000 episodes x 201 steps = 2,010,000 frames -> 1,720,000 six-frame windows,
+# `pixels` stored as (224, 224, 3) uint8 and `action` width 5, so train.py sets
+# action_encoder.input_dim = frameskip x action_dim = 5 x 5 = 25.
+#
+# config/eval/image_cube.yaml plans on cube.lance, whose `pixels` column is this
+# file's image data copied verbatim by lidar_from_h5.py -- the same episodes, so
+# the evaluation windows and the action z-score statistics line up with the
+# point-cloud arms'.
+#
+# Loads pixels + action only: the JEPA reads exactly those two columns
+# (jepa.encode), so the proprio / privileged / qpos columns this file also
+# carries would cost IO and a z-score pass for nothing. The point-cloud arms
+# load lidar + action, which keeps the modality the only difference.
+dataset:
+  name: ${oc.env:PLWM_DATA_ROOT,data}/cube_single_expert.h5
+  # Overridden by the Delta-JEPA config to ldad_horizon + 1 = 6 frames.
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  # Matches every other arm's protocol and the eval configs' plan_config.action_block.
+  frameskip: 5
+  keys_to_load:
+    - pixels
+    - action
+  keys_to_cache:
+    - action
+
+# NO `obs:` block -- its absence is what selects the image path in train.py
+# (ViT image preprocessor + default collate). A point-cloud data config carries
+# `obs.modality: pointcloud` instead; see lidar_cube.yaml.

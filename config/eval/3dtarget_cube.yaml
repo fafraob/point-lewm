@@ -1,0 +1,139 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Closed-loop eval with a typed 3-D goal (cube position) instead of a recorded
+# goal cloud -- see eval_3dtarget.py and target2latent/README.md.
+# World / lidar / plan blocks are copied from lidar_cube.yaml and MUST stay
+# identical to it: the only difference to the eval_lidar.py baseline is where
+# z_goal comes from.
+
+# What predicts the goal latent:
+#   env         which target2latent.envs.SPECS entry drives goal extraction
+#   model_dir   a target2latent.train output dir (model.pt inside)
+#   goal_mode   pred = predict z_goal from the goal pose (the method)
+#               true = encode the recorded goal cloud (parity self-check;
+#                      reproduces eval_lidar.py's cost path)
+#   sample_steps  shortcut head only: sampling steps (power of two);
+#                 null -> the model's own default (--flow-steps at training)
+target_goal:
+  env: cube
+  model_dir: checkpoints/cube/point-delta-jepa/target2latent/mlp_z
+  goal_mode: pred
+  sample_steps: null
+  video: true
+
+world:
+  env_name: swm/OGBCube-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_3dtarget.py to 2 * eval_budget
+  env_type: single
+  ob_type: states
+  multiview: False
+  width: 224
+  height: 224
+  visualize_info: False
+  terminate_at_goal: True
+
+dataset:
+  stats_keys:
+    - action
+
+seed: 42
+# Checkpoint: relative to <cache_dir>/checkpoints/ (default: the released checkpoints under
+# <repo>/checkpoints/<env>/<model>/), or to <logs_root>/<run>/checkpoints/ when run= is given.
+policy: cube/point-delta-jepa/weights.pt
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+cache_dir: ${hydra:runtime.cwd}
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5
+
+lidar:
+  key: lidar
+  in_channels: 3
+  invalid_value: -1.0
+  # == lidar_cube.yaml: the camera-matched sensor that generated the dataset.
+  sensor:
+    h_res: 100
+    v_res: 100
+    match_camera_fov: true
+    frame: sensor
+    # cube.lance was generated with the warp (GPU) backend; it reproduces the
+    # stored clouds bit-exactly (mj_multiRay differs on curved silhouettes).
+    backend: warp
+    miss_value: -1.0
+    mount_camera: front_pixels
+    add_goal_lidar: false
+    add_rgb: false
+    min_alpha: 0.5
+  # Eval-time sensor degradation -- the noise / dropout ablations. NOT part of
+  # `sensor` above: that block reproduces the scan that generated the training
+  # dataset and must stay faithful to it, while this one deliberately makes the
+  # scan worse to measure how far the world model survives it. Defaults are
+  # no-ops, so an unmodified eval behaves exactly as before.
+  perturb:
+    # Gaussian range noise (along each point's line of sight), sigma as a
+    # FRACTION of that frame's scan bounding-box diagonal. Relative because an
+    # absolute sigma is not comparable across these arenas -- 2 cm is a haze on
+    # Push-T (4.9 m across) and a catastrophe on reacher (1.4 m).
+    #   0.0025 -> ~0.33x the median point spacing in every env
+    #   0.005  -> ~0.67x the spacing; surfaces soften but stay surfaces
+    # Both stay BELOW the spacing on purpose: past it a point lands nearer a
+    # different surface than its own and the scan dissolves rather than
+    # degrades (at noise_frac 0.02 the Reacher scan dissolves and planning
+    # largely fails).
+    noise_frac: 0.0
+    # Fraction of returns marked as misses. They leave through the same
+    # invalid_value filter as genuine misses, so the model simply sees fewer
+    # points -- which is what a lost return is.
+    dropout_prob: 0.0
+    # What gets degraded. The goal cloud comes from the DATASET, not the
+    # sensor, so it stays clean unless asked for:
+    #   obs   -- live observation only (bad sensor, stored target)
+    #   both  -- goal too (tests the representation, but a failure no longer
+    #            separates "cannot see" from "aiming at the wrong thing")
+    scope: obs
+    # null -> derive from the eval `seed`, so a sweep's seeds give different
+    # noise realisations and each one replays exactly.
+    seed: null
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  # cube-only: keep only starts whose cube moves >= this (m) start -> goal.
+  # null = the historical "easy" metric; 0.05 = the "hard" one.
+  min_goal_displacement: null
+  # JSON {episodes, start_steps} pinning the eval windows -- REQUIRED for
+  # paired comparisons: the metric's run-to-run noise (encoder ball-query
+  # resampling) is larger than most effects.
+  starts_file: null
+  img_size: 224
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/cube.lance
+  callables:
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    - method: set_target_pos
+      args:
+        cube_id:
+          value: 0
+          in_dataset: False
+        target_pos:
+          value: goal_privileged_block_0_pos
+        target_quat:
+          value: goal_privileged_block_0_quat
+
+output:
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: 3dtarget_cube_results.txt

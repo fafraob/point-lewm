@@ -1,0 +1,73 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: utonia_emb_pusht
+  - model: utoniawm_pusht
+
+# Utonia-WM (frozen Utonia encoder, DINO-WM recipe) on the PUSHT lidar
+# dataset. Identical protocol to config/train/utoniawm_cube.yaml (the cube arm) --
+# only the dataset/cache, the environment-geometry numbers in the model config
+# and the token grid resolution differ, so the cube and pusht runs sit on the
+# same 100-epoch, effective-batch-512 protocol.
+#
+# BEFORE the first run (once per machine): build the frozen token cache with
+#   pixi run python precompute_utonia.py --config-name=utoniawm_pusht
+# Training refuses to start without it.
+#
+# Run length: 2.34 M rows, ~2.5x the two-room table (as for point_lewm_pusht.yaml),
+# and this arm runs 100 epochs, not 10. The cache makes an epoch cheap (no
+# clouds are read), but a window here is 4 frames x 264 tokens x 192 dims, so
+# the 100 epochs take several days on two GPUs (trainer.devices: 2).
+# Run with: pixi run train --config-name=utoniawm_pusht run_name=utoniawm_pusht
+
+output_model_name: utoniawm_pusht
+subdir: ${hydra:job.id}
+
+# Unused by this arm; kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Per-TOKEN latent width (see utoniawm_cube.yaml).
+embed_dim: 192
+history_size: 3
+
+# 12 x 11 x 2 = 264 tokens (App. A; cache: utonia_features_pusht.npy). The
+# Push-T table is about 5 x 4.3 m and only about 18 cm tall, so xy takes the
+# token budget and z keeps two layers (ground and object body).
+grid_x: 12
+grid_y: 11
+grid_z: 2
+num_tokens: ${eval:'${grid_x} * ${grid_y} * ${grid_z}'}
+
+trainer:
+  # Follows utoniawm_cube.yaml (the cube arm) -- keep the two in sync.
+  max_epochs: 100
+  devices: 2
+  strategy: ddp_find_unused_parameters_true
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+accumulate_grad_batches: 1
+
+loader:
+  # PER RANK (see utoniawm_cube.yaml): a 2-GPU run gives 2 x 256 x 1 =
+  # effective batch 512; a 1-GPU run must override loader.batch_size=512
+  # (or add ++accumulate_grad_batches=2) to match.
+  batch_size: 256
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 1e-3  # follows utoniawm_cube.yaml (the cube arm)
+  weight_decay: 1e-3
+
+num_preds: 1
+
+# Prediction loss only (frozen targets -- see utoniawm_cube.yaml).
+loss: {}

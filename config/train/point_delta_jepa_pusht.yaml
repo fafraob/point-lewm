@@ -1,0 +1,78 @@
+# Delta-JEPA on the PUSHT lidar dataset (ground KEPT): point_lewm_pusht with SIGReg
+# REPLACED by the Latent Difference Action Decoder -- loss =
+# pred + lambda * || D(z_{t+N} - z_t) - a_{t..t+N-1} ||^2. Window protocol is
+# the cube arm's verbatim (6 frames so LDAD spans N=5, full-window teacher
+# forcing), so this pairs with point_lewm_pusht exactly as point_delta_jepa pairs with point_lewm:
+# same data, same encoder, different anti-collapse mechanism.
+#
+# 2.34 M rows is ~2.5x the two-room table, so this is the long run of the pair;
+# the per-sample loss lets it use both GPUs (trainer.devices: 2).
+#
+# The three environment-geometry numbers are already measured and filled in;
+# they are IDENTICAL to model/point_lewm_pusht.yaml's by construction. See that
+# file's header for the derivation.
+# Run with: pixi run train --config-name=point_delta_jepa_pusht run_name=point_delta_jepa_pusht
+defaults:
+  - launcher: local
+  - data: lidar_pusht
+  - model: point_delta_jepa_pusht
+  - _self_   # last, so the data.dataset.num_steps override below wins
+
+output_model_name: point_delta_jepa_pusht
+subdir: ${hydra:job.id}
+
+# Unused by the PointViT encoder (no pretrained weights exist for it); kept so
+# shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+# DataLoader workers: point-cloud training is loader-bound, so raise this toward
+# the core count of the machine (the paper's runs used 16 on 64-core nodes).
+num_workers: 6
+train_split: 0.9
+seed: 3072
+embed_dim: 192
+
+# LDAD horizon N -- the single knob that sizes the window protocol:
+# num_steps = N + 1 frames, history_size = num_steps - num_preds.
+ldad_horizon: 5
+history_size: ${eval:'${ldad_horizon} + 1 - ${num_preds}'}
+
+data:
+  dataset:
+    num_steps: ${eval:'${ldad_horizon} + 1'}
+
+trainer:
+  # Fixed protocol length shared with every other ground-kept arm.
+  max_epochs: 10
+  devices: 2
+  strategy: ddp_find_unused_parameters_true
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+# Effective batch 128 (= point_lewm_pusht): 2 GPUs x micro-batch 64, no accumulation
+# (6-frame windows at bs=128 do not fit a 40 GB GPU; on one GPU use
+# trainer.devices=1 accumulate_grad_batches=2). Equivalence to a true bs=128
+# step is exact BECAUSE sigreg is gone -- no remaining loss term sees batch
+# statistics.
+accumulate_grad_batches: 1
+
+loader:
+  # Keep devices x batch_size x accumulate_grad_batches = 128.
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  # Faithful Delta-JEPA: NO sigreg block -- LDAD is the anti-collapse mechanism.
+  action:
+    weight: 10.0  # the paper's lambda

@@ -1,0 +1,155 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Utonia-WM closed-loop eval on TWO-ROOM -- the frozen-encoder sibling of
+# lidar_tworoom.yaml, structured like utoniawm_pusht.yaml. Same protocol as
+# lidar_tworoom.yaml (same dataset, sensor, sampling and CEM settings), so with
+# equal (num_eval, goal_offset, max_start_step, seed) the sampled
+# (episode, start) sequences are BYTE-IDENTICAL across arms.
+#
+# THE ENV IS NOT swm/TwoRoom-v1 -- see lidar_tworoom.yaml: the lidar dataset was
+# written against swm/TwoRoomLidar-v1, the MuJoCo mirror of the pure-torch 2D
+# env, and `world.iso_*` + `lidar.sensor` below are copied from the config that
+# GENERATED the dataset (stable-worldmodel scripts/data/config/
+# lidar_from_h5_tworoom.yaml) (part of the vendored stable-worldmodel/).
+#
+# The checkpoint carries no Utonia backbone (deliberately excluded from the
+# exports); UtoniaEncoder lazy-loads checkpoints/utonia/utonia.pth on the first
+# live forward and encodes the live clouds through the full frozen pipeline.
+# Planning cost is MSE in the frozen token space, matching DINO-WM's protocol.
+#
+# Run one seed:      pixi run eval-lidar --config-name=utoniawm_tworoom run=<run>
+
+world:
+  env_name: swm/TwoRoomLidar-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval_lidar.py to 2 * eval_budget
+  # The goal is a task instruction, not something the sensor should see: with
+  # null, no goal marker is mirrored and the scan carries only walls + agent --
+  # exactly how the dataset was collected.
+  goal_lidar_height: null
+  # Oblique sensor bearing (the scan inherits the iso camera's fov).
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+dataset:
+  # columns to z-score and expose to the policy (lidar is used raw)
+  stats_keys:
+    - action
+
+seed: 42
+# cem only: utoniawm has no action decoder, so the ldad/ldad_cem planners of
+# the point_delta_jepa arm cannot apply (eval_lidar.py refuses them without one).
+planner: cem
+# ckpt path relative to <run>/checkpoints/. weights_epoch_100.pt is this arm's
+# final export (100-epoch protocol) -- override for intermediate checkpoints,
+# e.g. run=utoniawm_tworoom policy=utoniawm_tworoom/weights_epoch_10.pt (the equal-budget point vs
+# point_lewm/point_delta_jepa).
+# Checkpoint to evaluate, relative to <cache_dir>/checkpoints/. Default: the released
+# checkpoint downloaded into <repo>/checkpoints/tworoom/utonia-wm/ (scripts/download_checkpoints.py).
+# For a training run of your own, run=<folder under logs_root> selects
+# <logs_root>/<run>/checkpoints/<policy> instead (run= takes precedence),
+# e.g. run=utoniawm_tworoom policy=utoniawm_tworoom/weights_epoch_10.pt for the equal-budget export.
+policy: tworoom/utonia-wm/weights.pt
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+cache_dir: ${hydra:runtime.cwd}
+
+# must match training: history_size=3 frames, frameskip=5 (action_block,
+# == config/train/data/utonia_emb_tworoom.yaml)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip
+
+lidar:
+  key: lidar # env info key; the dataset goal arrives as goal_${.key}
+  in_channels: 3
+  # Geometry-only arm: no colors are packed, panels render depth-colored.
+  contains_rgb: false
+  # Points with all coords == this are dropped before encoding -- MUST match
+  # the training pipeline: the cache was built with live_invalid_value -1.0
+  # (data/utonia_emb_tworoom.yaml), i.e. misses dropped before the encoder.
+  invalid_value: -1.0
+  # AddRaycastLidarWrapper kwargs == lidar_from_h5_tworoom.yaml's `lidar` block,
+  # copied from lidar_tworoom.yaml (the exact sensor that generated the dataset).
+  sensor:
+    h_res: 100
+    v_res: 100
+    match_camera_fov: true # ray grid comes from the iso camera's fov
+    backend: mujoco # the mirror is rebuilt per episode; warp would cache it
+    mount_camera: iso
+    frame: sensor
+    max_range: 8.0 # eye-to-far-corner is ~5.3 m from the iso pose
+    miss_value: -1.0 # sensor property; invalid_value above decides dropping
+    include_static: true
+    add_goal_lidar: false # goal clouds come from the dataset
+    add_rgb: false # no colors in this dataset (the only offline image is 2D)
+  # Eval-time sensor degradation -- the noise / dropout ablations. NOT part of
+  # `sensor` above: that block reproduces the scan that generated the training
+  # dataset and must stay faithful to it, while this one deliberately makes the
+  # scan worse to measure how far the world model survives it. Defaults are
+  # no-ops, so an unmodified eval behaves exactly as before.
+  perturb:
+    # Gaussian range noise (along each point's line of sight), sigma as a
+    # FRACTION of that frame's scan bounding-box diagonal. Relative because an
+    # absolute sigma is not comparable across these arenas -- 2 cm is a haze on
+    # Push-T (4.9 m across) and a catastrophe on reacher (1.4 m).
+    #   0.0025 -> ~0.33x the median point spacing in every env
+    #   0.005  -> ~0.67x the spacing; surfaces soften but stay surfaces
+    # Both stay BELOW the spacing on purpose: past it a point lands nearer a
+    # different surface than its own and the scan dissolves rather than
+    # degrades (at noise_frac 0.02 the Reacher scan dissolves and planning
+    # largely fails).
+    noise_frac: 0.0
+    # Fraction of returns marked as misses. They leave through the same
+    # invalid_value filter as genuine misses, so the model simply sees fewer
+    # points -- which is what a lost return is.
+    dropout_prob: 0.0
+    # What gets degraded. The goal cloud comes from the DATASET, not the
+    # sensor, so it stays clean unless asked for:
+    #   obs   -- live observation only (bad sensor, stored target)
+    #   both  -- goal too (tests the representation, but a failure no longer
+    #            separates "cannot see" from "aiming at the wrong thing")
+    scope: obs
+    # null -> derive from the eval `seed`, so a sweep's seeds give different
+    # noise realisations and each one replays exactly.
+    seed: null
+
+# evaluation from dataset (replay expert trajectories)
+# evaluation from dataset (replay expert trajectories)
+eval:
+  # 50 episodes per seed. Also the number of parallel MuJoCo envs.
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  # Kept at the lidar_tworoom.yaml value so the sampled sequences match that
+  # arm's evals (see header). eval.min_goal_displacement is CUBE-ONLY.
+  max_start_step: null
+  # JSON file with fixed {episodes, start_steps} -- overrides the sampling
+  # above entirely.
+  starts_file: null
+  img_size: 224 # TwoRoomEnv.IMG_SIZE, and the stored pixels resolution
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/two_room.lance
+  # Copied from config/eval/lidar_tworoom.yaml -- env API calls, identical for
+  # the utonia arm (2D state as pos_agent / pos_target, the h5 lineage names).
+  callables:
+    # -- set state
+    - method: _set_state
+      args:
+        state:
+          value: pos_agent
+    # -- set goal state (goal_* keys come from the dataset slice end state)
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_pos_agent
+
+output:
+  # directory for results + videos. scripts/run_sweep.sh sets this per (checkpoint, seed).
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: utoniawm_tworoom_results.txt
+  # false skips the per-episode panel videos (output.video=false on the CLI).
+  video: true

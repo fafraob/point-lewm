@@ -1,0 +1,55 @@
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# swm-format .h5 with 2D state (pos_agent / block_pose / goal_pose) + pixels
+# + ep_len/offset -- e.g. the LeWM PushT expert set:
+#   huggingface.co/datasets/quentinll/lewm-pusht  (pusht_expert_train.h5.zst)
+input: ???
+# Output .lance: every source column (pixels included) + the lidar column.
+output: ???
+write_mode: append
+chunk_size: 50
+ep_start: null
+ep_end: null
+
+# Mirror envs restore 2D state, not qpos/qvel, so the render check doesn't apply.
+check_render: false
+check_render_tol: 5.0
+
+env_name: swm/PushTLidar-v1
+env:
+  # The goal T is drawn in the RGB image but kept OUT of the mirror geometry,
+  # so it never appears in the cloud (matching the TwoRoom iso dataset).
+  goal_lidar_height: null
+  # Oblique sensor bearing; the mirror frames the whole arena from here.
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+# Oblique (45/45) mirror scan -- harder than top-down: the block and pusher
+# occlude the floor behind them and depth varies across the scan.
+# match_camera_fov builds the ray grid from the iso camera's own fov.
+# Mirror rebuilds per episode, so backend is forced to mujoco (warp would
+# cache a stale mesh).
+#
+# add_rgb is OFF: the only image available offline is the top-down pygame
+# render, and sampling it would both mis-project onto an oblique cloud and
+# paint the goal T back onto the floor points.
+lidar:
+  h_res: 100
+  v_res: 100
+  match_camera_fov: true  # h_fov / v_fov come from the camera, not set here
+  backend: mujoco
+  mount_camera: iso
+  frame: sensor
+  max_range: 12.0  # eye-to-far-corner is ~6.5 m from the iso pose
+  miss_value: -1.0
+  include_static: true
+  add_rgb: false
+  rgb_fill_value: -1.0
+  ray_noise_std: 0.0
+  range_noise_std: 0.0

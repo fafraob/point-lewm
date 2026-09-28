@@ -1,0 +1,29 @@
+# Push-T LiDAR table, re-sensed from the released image dataset with
+# stable-worldmodel/scripts/data/lidar_from_h5.py (docs/data.md). The table lives
+# under $PLWM_DATA_ROOT (default <repo>/data); override per run with
+# `data.dataset.name=/path/to/table.lance`.
+# 18,685 episodes of 49-246 steps (2,336,736 frames); 10,000 points per scan
+# (oblique 45/45 sensor), exactly 2,000 of them misses. Actions are 2-D, so
+# action_encoder.input_dim = frameskip * 2 = 10 (set by train.py).
+# The largest table: one epoch costs ~2.5x a Two-Room epoch at the same protocol.
+dataset:
+  name: ${oc.env:PLWM_DATA_ROOT,data}/pusht.lance
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  # world models step at frameskip 5 (== plan_config.action_block of the eval configs)
+  frameskip: 5
+  keys_to_load:
+    - lidar
+    - action
+
+# Observation modality metadata read by train.py. Presence of this block (with
+# modality: pointcloud) switches the data pipeline from the image path to the
+# point-cloud path: a reshape transform + packed collate_fn instead of the ViT
+# image preprocessor.
+obs:
+  modality: pointcloud
+  source_key: lidar     # flat (T, N * in_channels) column on disk
+  target_key: points    # packed-dict key fed to the encoder (== encoder.input_key)
+  in_channels: 3        # xyz per point; the point count N is inferred and may vary
+  # Drop points whose coords are all == this (missed rays). -1.0 is the sensor's
+  # miss_value in every table of this repository; null disables dropping.
+  invalid_value: -1.0

@@ -1,0 +1,46 @@
+_target_: jepa.JEPA
+
+# Vox-WM (per-cell point statistics, ground KEPT) on the TWO-ROOM lidar
+# dataset -- the geometric baseline for model/utoniawm_tworoom.yaml. Identical
+# architecture to model/voxstats_cube.yaml; the ONLY differences are the
+# environment-geometry numbers, which are copied 1:1 from
+# model/utoniawm_tworoom.yaml (see its header for the derivation)
+# so both arms tokenize the same cells. The never-changing wall cells stay in
+# the grid on purpose, exactly as in the utoniawm arm.
+# tests/test_voxstats.py::test_configs_mirror_utoniawm enforces the sync.
+# Run with: pixi run train --config-name=voxstats_tworoom run_name=voxstats_tworoom
+encoder:
+  _target_: pc_encoders.voxstats_encoder.VoxelStatsEncoder
+  embed_dim: ${embed_dim}
+  lift_seed: 0                 # fixed 25 -> ${embed_dim} lift, see model/voxstats_cube.yaml
+  in_channels: 3
+  # quoted so YAML does not try to parse ${...} as a flow mapping; a
+  # whole-string interpolation keeps its int type
+  grid_dims: ["${grid_x}", "${grid_y}", "${grid_z}"]
+  grid_bounds: [[-2.13, -1.87, -0.01], [2.36, 1.87, 0.22]]
+  coord_scale: 4.0
+  grid_size: 0.01
+  canonical_plane: [0.707105, 0.0, -0.707108, -2.821242]
+  canonical_center: [4.21, 0.0, 0.36]
+  count_norm: 256              # see model/voxstats_cube.yaml
+
+# DINO-WM's own predictor (see model/voxstats_cube.yaml).
+predictor:
+  _target_: module.TokenPredictor
+  num_frames: ${history_size}
+  num_tokens: ${num_tokens}
+  input_dim: ${embed_dim}
+  action_emb_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  dim_head: 64
+  mlp_dim: 2048
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}

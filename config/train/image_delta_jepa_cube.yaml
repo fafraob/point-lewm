@@ -1,0 +1,105 @@
+# Delta-JEPA on PIXELS, OGB-Cube: the image counterpart of point_delta_jepa_cube.yaml.
+# LeWM's image stack with SIGReg REPLACED by the Latent Difference Action
+# Decoder -- loss = pred + lambda * || D(z_{t+N} - z_t) - a_{t..t+N-1} ||^2.
+# This file is the reference of the four image arms; the other three differ ONLY
+# in `data:` and `output_model_name`, so read the notes here.
+# Run with: pixi run train --config-name=image_delta_jepa_cube run_name=image_delta_jepa_cube
+#
+# WINDOW PROTOCOL -- point_delta_jepa_cube.yaml's verbatim, not re-derived: windows are
+# 6 frames so LDAD spans the horizon N=5, and the predictor teacher-forces
+# across the FULL window (5 context positions predicting frames 1..5), so every
+# frame and every in-window action carries gradient. This widens the predictor's
+# trained context 3 -> 5 against the LeWM baseline (pos-embedding length follows
+# history_size). CLOSED-LOOP EVAL IS UNAFFECTED: jepa.rollout truncates context
+# to its own history_size=3 default, which matches training position 2 exactly
+# (causal, left-aligned) -- which is why config/eval/image_cube.yaml needs no
+# change to evaluate this arm.
+#
+# PROTOCOL -- the Delta-JEPA paper's, not this repository's point-cloud one. Its
+# implementation details pin the architecture to LeWM's (randomly initialized
+# ViT-Tiny encoder; 6-layer causal Transformer predictor, 16 heads, head dim 64,
+# MLP 2048, AdaLN action conditioning; a 3-layer NON-causal action decoder with
+# N=5 learnable action queries, 8 heads, head dim 64, FFN 512) and state that
+# Delta-JEPA and its baselines are trained from scratch for 50 epochs.
+# model/image_delta_jepa.yaml matches every one of those numbers, and
+# trainer.max_epochs below is the 50.
+#
+# WHAT THIS COMPARISON DOES AND DOES NOT CONTROL. Against the released image
+# LeWM checkpoint (checkpoints/image_lewm_<env>, README, Baselines) the
+# budgets differ: that checkpoint's is whatever upstream used, this one's is the
+# Delta-JEPA paper's 50 epochs. Read the gap as loss + budget, not as loss
+# alone. Against this repository's point-cloud Delta-JEPA arms the budgets also
+# differ (they run 10 epochs); weights are exported every epoch, so
+# weights_epoch_10.pt gives that equal-budget comparison without a second run.
+defaults:
+  - launcher: local
+  - data: image_cube
+  - model: image_delta_jepa
+  - _self_   # last, so the data.dataset.num_steps override below wins
+
+output_model_name: image_delta_jepa_cube
+subdir: ${hydra:job.id}
+
+# Unused by the from-scratch ViT (LeWM trains the pixel encoder end-to-end);
+# kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+# DataLoader workers: raise this toward the core count of the machine (the
+# paper's runs used 16 on 64-core nodes).
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Pixel resolution the ViT and the preprocessor agree on. MUST equal the eval
+# config's eval.img_size (224 everywhere here) and the table's stored resolution.
+img_size: 224
+embed_dim: 192
+
+# LDAD horizon N -- the single knob that sizes the window protocol:
+# num_steps = N + 1 frames, history_size = num_steps - num_preds.
+ldad_horizon: 5
+history_size: ${eval:'${ldad_horizon} + 1 - ${num_preds}'}
+
+data:
+  dataset:
+    num_steps: ${eval:'${ldad_horizon} + 1'}
+
+trainer:
+  # The Delta-JEPA paper's own protocol, deliberately NOT this repository's
+  # 10-epoch point-cloud protocol. The cosine is sized from THIS value (train.py
+  # sizes it in optimizer steps), so a run cut short never anneals: decide the
+  # number before the run rather than shortening the schedule.
+  max_epochs: 50
+  devices: 1
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+# Effective batch 128 (= every other arm) as micro-batch 64 x 2 accumulation on
+# one GPU. Equivalence to a true bs=128 step is exact BECAUSE sigreg is gone --
+# no remaining loss term sees batch statistics -- and train.py averages the
+# accumulated loss and sizes the cosine in optimizer steps. On two GPUs use
+# `trainer.devices=2 accumulate_grad_batches=1` for the same objective at half
+# the wall time. Pixels are lighter than 8k-point clouds, so if the GPU has
+# headroom `loader.batch_size=128 ++accumulate_grad_batches=1` is again the same
+# objective at one optimizer step per batch; keep
+# devices x batch_size x accumulate_grad_batches = 128 either way.
+accumulate_grad_batches: 2
+
+loader:
+  batch_size: 64
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5  # the image LeWM baseline's lr AND the Delta-JEPA paper's
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  # Faithful Delta-JEPA: NO sigreg block -- LDAD is the anti-collapse mechanism.
+  action:
+    weight: 10.0  # the paper's lambda

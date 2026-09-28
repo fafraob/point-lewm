@@ -1,0 +1,81 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel (image LeWM) eval for the pusht arm -- image sibling of
+# config/eval/lidar_pusht.yaml, structured like image_cube.yaml. Run with:
+#   python eval.py --config-name=image_pusht
+#
+# THE ENV IS swm/PushT-v1, the original 2D pymunk env of the h5 image data --
+# the image model plans over that env's own pixels.
+# The MuJoCo mirror (swm/PushTLidar-v1) is a lidar-only concern.
+#
+# SEQUENCE-MATCHED with the lidar eval: this config evaluates on the SAME
+# Lance dataset as lidar_pusht.yaml, NOT on pusht_expert_train.h5. Both eval.py
+# and eval_lidar.py sample via eval_lidar.sample_eval_starts, deterministic in
+# (dataset.lengths, num_eval, goal_offset_steps, seed, max_start_step,
+# min_goal_displacement) -- identical dataset + identical values means a given
+# seed draws the IDENTICAL (episode, start_step) windows in both modalities.
+# Keep all of them in sync with lidar_pusht.yaml or the comparison breaks.
+# The dataset's pixels column IS the original h5 image data (lidar_from_h5.py
+# copies it verbatim).
+
+world:
+  env_name: swm/PushT-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+
+dataset:
+  stats: ${eval.dataset_name}
+  # columns to z-score and expose to the policy (pixels are transformed by
+  # img_transform, not z-scored; the model consumes pixels + action only)
+  keys_to_cache:
+    - action
+
+seed: 42
+# load_pretrained resolves <cache_dir>/checkpoints/<policy>. Default: the released
+# image Delta-JEPA checkpoint (checkpoints/pusht/image-delta-jepa/, scripts/download_checkpoints.py).
+# The image LeWM checkpoint of Maes et al. is policy=image_lewm_pusht (a folder with
+# weights.pt + config.json, --image-lewm of the download script); DINO-WM is
+# cache_dir=checkpoints/pusht/dino-wm policy=model_latest.pth.
+policy: pusht/image-delta-jepa/weights.pt
+cache_dir: ${hydra:runtime.cwd}
+# run=<folder under logs_root> evaluates a training run of your own instead
+logs_root: null
+run: null
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip
+
+# evaluation from dataset (replay expert trajectories)
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  # MUST equal the dataset's stored pixel resolution
+  img_size: 224
+  # SAME dataset as lidar_pusht.yaml => same sampled eval sequences.
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/pusht.lance
+  # Same callables as the h5-based image eval; the Lance dataset
+  # carries the same state[7] column (verified on the lidar side).
+  callables:
+    # -- set state
+    - method: _set_state
+      args:
+        state:
+          value: state
+    # -- set goal state (goal_* keys come from the dataset slice end state)
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_state
+
+output:
+  # directory for results + videos. scripts/run_sweep.sh sets this per (checkpoint, seed).
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_pusht_results.txt

@@ -1,0 +1,66 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: lidar_reacher
+  - model: point_lewm_reacher
+
+# Point-LeWM (PointViT + SIGReg, geometry only, ground KEPT) on the REACHER lidar
+# dataset. Same architecture and protocol as the other non-cube point_lewm configs
+# (256 tokens, effective batch 128, lr 5e-5, history_size 3, frameskip 5, 10
+# epochs); only the dataset and the environment geometry (group_radius,
+# norm_center, norm_scale) differ. OGB-Cube alone uses 512 tokens and a
+# 50-epoch schedule, see point_lewm_cube.yaml.
+#
+# The geometry values were measured on the dataset. See the measurement block
+# at the top of model/point_lewm_reacher.yaml to re-derive them.
+# Run with: pixi run train --config-name=point_lewm_reacher run_name=point_lewm_reacher
+
+output_model_name: point_lewm_reacher
+subdir: ${hydra:job.id}
+
+# Unused by the PointViT encoder (no pretrained weights exist for it); kept so
+# shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+# DataLoader workers: point-cloud training is loader-bound, so raise this toward
+# the core count of the machine (the paper's runs used 16 on 64-core nodes).
+num_workers: 6
+train_split: 0.9
+seed: 3072
+embed_dim: 192
+history_size: 3
+
+trainer:
+  # Fixed protocol length shared with every other ground-kept arm.
+  max_epochs: 10
+  # ONE GPU at batch 128, as in the paper's run (SIGReg is synced across ranks,
+  # so 2 x 64 would be equivalent; `auto` on a 2-GPU machine would double it).
+  devices: 1
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  # 128 matches the cube and two-room point_lewm runs. The encoder's memory is set by
+  # num_tokens x group_size, NOT by the input point count, so this ceiling
+  # carries over to reacher clouds of any size. SIGReg's statistic scales with
+  # B, so keep B equal across every arm you want to compare.
+  batch_size: 128
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024

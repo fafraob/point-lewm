@@ -1,0 +1,81 @@
+_target_: jepa.JEPA
+
+# Point-Delta-JEPA: point_lewm (geometry only, ground KEPT) + Delta-JEPA's Latent
+# Difference Action Decoder. Encoder / projectors are IDENTICAL to the
+# baseline; the additions are the displacement->action inverse head and a wider
+# predictor pos-embedding (num_frames follows history_size = 5: full-window
+# teacher forcing, see the train config). The train config swaps SIGReg for the
+# LDAD action reconstruction loss.
+# Run with: pixi run train --config-name=point_delta_jepa_cube run_name=point_delta_jepa_cube
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  num_tokens: 512            # OGB-Cube uses 512 centres (the other environments 256): the arm is small against the table
+  group_size: 32             # points sampled per group (ball query, uniform without replacement)
+  # Ball-query radius (RAW sensor-frame meters) around each FPS center (0.03 m
+  # on OGB-Cube, App. A); the PointNet tokenizes group_size random points from
+  # that ball.
+  group_radius: 0.03
+  # Candidate cap for the radius query BEFORE the random subsample.
+  # torch_cluster truncates fuller balls to the first N points in packed row
+  # order (scan order, not random) -- keep well above typical ball occupancy.
+  group_max_neighbors: 128
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only (xyz, no colour channel)
+  # Fixed workspace affine (same values as point_lewm).
+  norm_center: [1.27, 0.0, 0.25]
+  norm_scale: 0.75
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+# Delta-JEPA LDAD: reconstructs the N=horizon macro-actions spanning the
+# latent displacement z_{t+N} - z_t. Sizes follow the paper's "lightweight
+# 3-layer non-causal Transformer with N=5 learnable action queries, 8 attention
+# heads, a head dimension of 64, and an FFN hidden dimension of 512".
+# Training-only; planning never calls it.
+action_decoder:
+  _target_: module.LatentDifferenceActionDecoder
+  latent_dim: ${embed_dim}
+  action_dim: ???            # frameskip * action_dim, set by train.py like action_encoder.input_dim
+  horizon: ${ldad_horizon}
+  depth: 3
+  heads: 8
+  dim_head: 64
+  mlp_dim: 512
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

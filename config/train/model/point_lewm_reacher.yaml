@@ -1,0 +1,95 @@
+_target_: jepa.JEPA
+
+# point_lewm (PointViT, geometry only, ground KEPT) on the REACHER lidar dataset.
+# Identical architecture to model/point_lewm_cube.yaml and model/point_lewm_tworoom.yaml -- same
+# tokenizer, same tiny ViT, same CLS readout -- so the cube, two-room and
+# reacher runs are directly comparable. The ONLY differences are the three
+# numbers that are properties of the environment's geometry rather than of the
+# model: the workspace affine (norm_center / norm_scale) and the ball-query
+# radius, plus the token count (OGB-Cube uses 512 centres, the other
+# environments 256).
+#
+# MEASURED from reacher.lance with the method in the README's "Adding an
+# environment" paragraph (48 frames spread over the table, points with all
+# channels == -1 dropped first). The same method on two_room.lance returns
+# norm_center [4.2851, 0.0, 0.2939], norm_scale 1.7658 and a median NN-32
+# distance of 0.1270, the basis of the checked-in two-room values (see
+# model/point_lewm_tworoom.yaml).
+#
+#   valid points/frame            9986 of 10000
+#   per-axis p1                   [ 0.5600, -0.4798, -0.2420]
+#   per-axis p99                  [ 1.3908,  0.4798,  0.5888]
+#   norm_center = (p1+p99)/2      [ 0.9754,  0.0000,  0.1734]  -> [0.98, 0.0, 0.17]
+#   norm_scale  = max (p99-p1)/2    0.4798                     -> 0.48
+#   NN-32 distance                 median 0.0277  p75 0.0384  p90 0.0515
+#   group_radius = round(p75, 2)    0.0384                     -> 0.04
+#
+# Notes on the two judgement calls, both taken the same way as two-room:
+#  * norm_scale 0.48 is the p1/p99 half-extent, so ~2% of points land outside
+#    [-1, 1] (the true min/max half-extent is 0.592). Two-room accepts the same
+#    clipping; raise to 0.55 if you want the full extent inside the box, but
+#    then change model/point_delta_jepa_reacher.yaml identically.
+#  * group_radius 0.04 is the p75 of the NN-32 distance, so ~75% of the ball
+#    queries fill their 32-point group. 0.05 (~p90) is the conservative
+#    alternative. OGB-Cube, at a near-identical point density (cube median
+#    0.0306), uses 0.03 with 512 tokens. Tune visually with `pixi run viz-radius`.
+#
+# Keep every value here identical to model/point_delta_jepa_reacher.yaml -- the two
+# MUST stay in sync, or the point_lewm/point_delta_jepa comparison stops isolating the loss.
+# Run with: pixi run train --config-name=point_lewm_reacher run_name=point_lewm_reacher
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  # 256 FPS centers x 32 points against ~9986 valid points per cloud -- the
+  # densest of the three environments, so the centers are not resampling the
+  # same handful of points. Keep in sync with model/point_delta_jepa_reacher.yaml.
+  num_tokens: 256
+  group_size: 32
+  # RAW sensor-frame units. See the measurement block in the header.
+  group_radius: 0.04
+  group_max_neighbors: 128
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only
+  # Fixed workspace affine: (coord - center) / scale -> ~[-1, 1]. Constant, NOT
+  # per-cloud (that would erase the absolute finger/target position).
+  norm_center: [0.98, 0.0, 0.17]
+  norm_scale: 0.48
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

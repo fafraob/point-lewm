@@ -1,0 +1,45 @@
+_target_: jepa.JEPA
+
+# Vox-WM (per-cell point statistics, ground KEPT) on the REACHER lidar
+# dataset -- the geometric baseline for model/utoniawm_reacher.yaml. Identical
+# architecture to model/voxstats_cube.yaml; the ONLY differences are the
+# environment-geometry numbers, which are copied 1:1 from
+# model/utoniawm_reacher.yaml (see its header for the derivation)
+# so both arms tokenize the same cells.
+# tests/test_voxstats.py::test_configs_mirror_utoniawm enforces the sync.
+# Run with: pixi run train --config-name=voxstats_reacher run_name=voxstats_reacher
+encoder:
+  _target_: pc_encoders.voxstats_encoder.VoxelStatsEncoder
+  embed_dim: ${embed_dim}
+  lift_seed: 0                 # fixed 25 -> ${embed_dim} lift, see model/voxstats_cube.yaml
+  in_channels: 3
+  # quoted so YAML does not try to parse ${...} as a flow mapping; a
+  # whole-string interpolation keeps its int type
+  grid_dims: ["${grid_x}", "${grid_y}", "${grid_z}"]
+  grid_bounds: [[-0.61, -0.54, -0.01], [0.64, 0.54, 0.10]]
+  coord_scale: 4.0
+  grid_size: 0.01
+  canonical_plane: [0.707106, 0.0, -0.707107, -0.567108]
+  canonical_center: [0.94, 0.0, 0.21]
+  count_norm: 256              # see model/voxstats_cube.yaml
+
+# DINO-WM's own predictor (see model/voxstats_cube.yaml).
+predictor:
+  _target_: module.TokenPredictor
+  num_frames: ${history_size}
+  num_tokens: ${num_tokens}
+  input_dim: ${embed_dim}
+  action_emb_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  dim_head: 64
+  mlp_dim: 2048
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}

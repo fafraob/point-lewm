@@ -1,0 +1,76 @@
+_target_: jepa.JEPA
+
+# PointViT encoder (geometry only): a Point-BERT/Uni3D-style tokenizer feeding
+# the SAME kind of ViT the image model uses. FPS picks num_tokens center points
+# (512 on OGB-Cube), a ball query samples a local neighborhood around each, a
+# tiny PointNet (LayerNorm) turns each group into one token, a learned CLS
+# token is prepended (one extra token), a
+# bidirectional LayerNorm-only transformer processes them, and the CLS token is
+# read out as the per-cloud latent (exactly like JEPA reads the image ViT's CLS).
+# LayerNorm-only throughout (cf. R3D 2026's scaling-paradox fix).
+# Run with: pixi run train --config-name=point_lewm_cube run_name=point_lewm_cube
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  num_tokens: 512            # OGB-Cube uses 512 centres (the other environments 256): the arm is small against the table
+  group_size: 32             # points sampled per group (ball query, uniform without replacement)
+  # Ball-query radius (RAW sensor-frame meters) around each FPS center (0.03 m
+  # on OGB-Cube, App. A); the PointNet tokenizes group_size random points from
+  # that ball.
+  group_radius: 0.03
+  # Candidate cap for the radius query BEFORE the random subsample.
+  # torch_cluster truncates fuller balls to the first N points in packed row
+  # order (scan order, not random) -- keep well above typical ball occupancy.
+  group_max_neighbors: 128
+  # The transformer IS the image model's ViT (stable_pretraining vit_hf). "tiny"
+  # is exactly what the pixel config uses (192-dim / 12-layer / 3-head, ~5.5M) --
+  # the from-scratch sweet spot for this small synthetic task. "small" (384-dim,
+  # ~22M) is R3D's choice for ~8k points but assumes Uni3D pretraining we do NOT
+  # have here, so it would likely overfit; scale up only with more data.
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only (xyz, no colour channel)
+  # Fixed workspace affine for the coords: (coord - center) / scale -> ~[-1,1].
+  # Constant (NOT per-cloud -- that would erase the absolute cube position).
+  # Measured on the cube table (cube.lance): valid
+  # points span x [0.40, 1.99], y [-0.81, 0.81], z [-0.28, 0.78].
+  norm_center: [1.27, 0.0, 0.25]
+  norm_scale: 0.75
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

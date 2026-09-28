@@ -1,0 +1,88 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel (image LeWM) eval for the reacher arm -- image sibling of
+# config/eval/lidar_reacher.yaml, structured like image_cube.yaml. Run with:
+#   python eval.py --config-name=image_reacher
+#
+# THE ENV IS swm/ReacherDMControl-v0, the original dm_control reacher of the
+# h5 image data -- the image model plans over that env's own pixels. The 3D
+# re-skin (swm/Reacher3D-v0) is a lidar-only concern. Both envs score success
+# with the same qpos_match rule (every joint within 0.05 rad of the pose given
+# to set_target_qpos; see lidar_reacher.yaml), and both modalities share the
+# (episode, start) windows, so their success rates are directly comparable.
+#
+# SEQUENCE-MATCHED with the lidar eval: this config evaluates on the SAME
+# Lance dataset as lidar_reacher.yaml (a different copy with identical episode
+# structure would sample identically, but pointing at the same dataset removes the
+# doubt -- keep this and lidar_reacher.yaml on the same path). Both eval.py and
+# eval_lidar.py sample via
+# eval_lidar.sample_eval_starts, deterministic in (dataset.lengths, num_eval,
+# goal_offset_steps, seed, max_start_step, min_goal_displacement) -- keep all
+# of them in sync with lidar_reacher.yaml or the comparison breaks. The
+# dataset's pixels column IS the original dm_control h5 image data
+# (lidar_from_h5.py copies it verbatim).
+
+world:
+  env_name: swm/ReacherDMControl-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+  task: qpos_match
+
+dataset:
+  stats: ${eval.dataset_name}
+  # columns to z-score and expose to the policy (pixels are transformed by
+  # img_transform, not z-scored; the model consumes pixels + action only)
+  keys_to_cache:
+    - action
+
+seed: 42
+# load_pretrained resolves <cache_dir>/checkpoints/<policy>. Default: the released
+# image Delta-JEPA checkpoint (checkpoints/reacher/image-delta-jepa/, scripts/download_checkpoints.py).
+# The image LeWM checkpoint of Maes et al. is policy=image_lewm_reacher (a folder with
+# weights.pt + config.json, --image-lewm of the download script); DINO-WM is
+# cache_dir=checkpoints/reacher/dino-wm policy=model_latest.pth.
+policy: reacher/image-delta-jepa/weights.pt
+cache_dir: ${hydra:runtime.cwd}
+# run=<folder under logs_root> evaluates a training run of your own instead
+logs_root: null
+run: null
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip
+
+# evaluation from dataset (replay expert trajectories)
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  # MUST equal the dataset's stored pixel resolution
+  img_size: 224
+  # SAME dataset as lidar_reacher.yaml => same sampled eval sequences.
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/reacher.lance
+  # Same callables as the h5-based image eval; the Lance dataset
+  # carries the same qpos/qvel columns.
+  callables:
+    # -- set state
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    # -- set target qpos (goal_* keys come from the dataset slice end state)
+    - method: set_target_qpos
+      args:
+        target_qpos:
+          value: goal_qpos
+
+output:
+  # directory for results + videos. scripts/run_sweep.sh sets this per (checkpoint, seed).
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_reacher_results.txt

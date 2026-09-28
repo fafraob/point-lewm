@@ -1,0 +1,128 @@
+{
+ "env": "reacher",
+ "dataset": "reacher.lance",
+ "stride": 10,
+ "seed": 0,
+ "n_frames": 201000,
+ "n_test": 40196,
+ "models": {
+  "Point-LeWM": {
+   "run": "point_lewm_reacher",
+   "policy": "point_lewm_reacher/weights.pt",
+   "latent_dim": 192,
+   "targets": {
+    "finger_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 2.8892953877032223e-06,
+      "r2": 0.9997352746708424,
+      "lambda": 0.1
+     },
+     "mlp": {
+      "mse": 5.0123764197289e-07,
+      "r2": 0.9999540752045214,
+      "best_epoch": 86
+     }
+    },
+    "joint_pos_3d": {
+     "dim": 3,
+     "linear": {
+      "mse": 1.8533918963413589e-06,
+      "r2": 0.9996135893329028,
+      "lambda": 0.1
+     },
+     "mlp": {
+      "mse": 1.841385940382088e-07,
+      "r2": 0.9999616092435166,
+      "best_epoch": 89
+     }
+    },
+    "joint_angles_raw": {
+     "dim": 2,
+     "linear": {
+      "mse": 1.9107257921642748,
+      "r2": 0.4628702200748589,
+      "lambda": 10.0
+     },
+     "mlp": {
+      "mse": 1.9168688993121683,
+      "r2": 0.46114331305139367,
+      "best_epoch": 4
+     }
+    },
+    "joint_angle_headings": {
+     "dim": 6,
+     "linear": {
+      "mse": 0.0001473712898478421,
+      "r2": 0.9995577192005055,
+      "lambda": 0.1
+     },
+     "mlp": {
+      "mse": 2.0508525977363783e-05,
+      "r2": 0.9999384511917139,
+      "best_epoch": 91
+     }
+    }
+   }
+  },
+  "Point-Delta-JEPA": {
+   "run": "point_deltajepa_reacher",
+   "policy": "point_deltajepa_reacher/weights.pt",
+   "latent_dim": 192,
+   "targets": {
+    "finger_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 1.571402176207706e-05,
+      "r2": 0.9985602373502345,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 2.397821498400359e-06,
+      "r2": 0.9997803048839774,
+      "best_epoch": 93
+     }
+    },
+    "joint_pos_3d": {
+     "dim": 3,
+     "linear": {
+      "mse": 3.915888269152218e-06,
+      "r2": 0.9991835828130315,
+      "lambda": 0.1
+     },
+     "mlp": {
+      "mse": 1.1700073139023374e-06,
+      "r2": 0.9997560670748771,
+      "best_epoch": 96
+     }
+    },
+    "joint_angles_raw": {
+     "dim": 2,
+     "linear": {
+      "mse": 1.909955177224485,
+      "r2": 0.46308684992028926,
+      "lambda": 10.0
+     },
+     "mlp": {
+      "mse": 1.910978282517131,
+      "r2": 0.46279924176482656,
+      "best_epoch": 13
+     }
+    },
+    "joint_angle_headings": {
+     "dim": 6,
+     "linear": {
+      "mse": 0.0006095860880659868,
+      "r2": 0.9981705512473366,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.00010559365882941864,
+      "r2": 0.9996830994157896,
+      "best_epoch": 94
+     }
+    }
+   }
+  }
+ }
+}

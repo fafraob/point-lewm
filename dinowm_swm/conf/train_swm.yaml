@@ -1,0 +1,118 @@
+# DINO-WM training on the stable-worldmodel image datasets -- the primary Hydra
+# config of dinowm_swm/train.py. It is upstream conf/train.yaml (vendored at
+# third_party/dino_wm/conf/train.yaml) with the following differences, and
+# NOTHING else:
+#
+#   env            one of dinowm_swm/conf/env/swm_*.yaml (our .h5 datasets)
+#   launcher       basic (one process per launch; upstream used submitit)
+#   run_dir        REQUIRED: absolute, fixed run folder (hydra.run.dir) --
+#                  checkpoints/model_<epoch>.pth + hydra.yaml land there, which
+#                  is exactly the layout upstream plan.py loads
+#   has_decoder    False. The VQ-VAE decoder only renders visualisations; its
+#                  loss is computed on DETACHED latents, so it never influences
+#                  the predictor or planning. Dropping it saves ~half the step
+#                  time and the memory the 384-channel 224x224 decoder needs
+#                  (batch 32 with decoder OOMs a 24 GB card), and removes the
+#                  LPIPS / VGG weight downloads the image metrics need.
+#   mixed_precision  bf16 autocast through accelerate (ACCELERATE_MIXED_PRECISION).
+#                  Numerics only; recorded here so dinowm_swm.planning runs the
+#                  frozen encoder + predictor under the same autocast at eval.
+#   training.epochs  TOTAL epoch budget, resume-aware (upstream counts epochs
+#                  to ADD on top of a resumed checkpoint; dinowm_swm/train.py
+#                  trains max(0, epochs - done) more). Same value == same run.
+#   training.batch_size / predictor_lr / action_encoder_lr
+#                  the values the paper's DINO-WM runs used: effective batch 128
+#                  (torchrun --nproc_per_node=2, 64 per GPU; upstream divides
+#                  training.batch_size by the process count) and AdamW 1e-3 for
+#                  the predictor and the action / proprio encoders. The upstream
+#                  DINO-WM recipe is batch 32 and lr 5e-4 on one GPU; restore it
+#                  with the overrides
+#                    training.batch_size=32 training.predictor_lr=5e-4 training.action_encoder_lr=5e-4
+#                  The paper's runs also used env.num_workers=24 (the env/
+#                  default is 16, see env/swm_*.yaml).
+#
+# Everything about the model is the paper's: frozen DINOv2 ViT-S/14 patch
+# tokens (196 per 224 -> 196 px frame), ViT predictor depth 6 / heads 16 /
+# mlp 2048, 10-d action + 10-d proprio embeddings concatenated onto every
+# patch token (concat_dim 1), history 3, frameskip 5.
+#
+# Run from the repository root (run_dir must be absolute):
+#   torchrun --nproc_per_node=2 -m dinowm_swm.train env=swm_tworoom \
+#       run_dir=$PWD/experiment_logs/dinowm_tworoom
+# Single GPU (the whole batch of 128 then runs on one card):
+#   python -m dinowm_swm.train env=swm_tworoom run_dir=$PWD/experiment_logs/dinowm_tworoom
+# The source .h5 files are looked up in $SWM_H5_DIR (default: PLWM_DATA_ROOT,
+# see paths.py). Re-launching with the same run_dir resumes from
+# checkpoints/model_latest.pth until training.epochs is reached.
+defaults:
+  - _self_
+  - env: swm_tworoom
+  - encoder: dino
+  - action_encoder: proprio
+  - proprio_encoder: proprio
+  - decoder: vqvae
+  - predictor: vit
+  - override hydra/launcher: basic
+
+run_dir: ???
+ckpt_base_path: ${run_dir}
+
+hydra:
+  run:
+    dir: ${run_dir}
+  sweep:
+    dir: ${run_dir}
+    subdir: ${hydra.job.num}
+  job:
+    chdir: true   # upstream relies on cwd == run folder (hydra 1.2 behaviour)
+
+training:
+  seed: 0
+  epochs: 100                   # TOTAL budget (see header)
+  batch_size: 128               # EFFECTIVE batch (see header; upstream: 32)
+  save_every_x_epoch: 1
+  reconstruct_every_x_batch: 500
+  num_reconstruct_samples: 6
+  encoder_lr: 1e-6
+  decoder_lr: 3e-4
+  predictor_lr: 1e-3            # upstream: 5e-4
+  action_encoder_lr: 1e-3       # upstream: 5e-4 (also the proprio encoder's lr)
+
+img_size: 224
+frameskip: 5
+concat_dim: 1
+
+normalize_action: True
+
+action_emb_dim: 10
+num_action_repeat: 1
+
+proprio_emb_dim: 10
+num_proprio_repeat: 1
+
+num_hist: 3
+num_pred: 1
+has_predictor: True
+has_decoder: False              # see header
+
+model:
+  _target_: models.visual_world_model.VWorldModel
+  image_size: ${img_size}
+  num_hist: ${num_hist}
+  num_pred: ${num_pred}
+  train_encoder: False
+  train_predictor: True
+  train_decoder: ${has_decoder}
+
+debug: False
+
+# ours (read by dinowm_swm/train.py and dinowm_swm/planning.py)
+mixed_precision: bf16           # "no" | "bf16" | "fp16"
+wandb_mode: offline             # logs stay local; `wandb sync <run_dir>/wandb/...` uploads them later
+
+plan_settings:
+  plan_cfg_path: null           # no in-training planning jobs (upstream submitit)
+  planner: ['gd', 'cem']
+  goal_source: ['dset', 'random_state']
+  goal_H: [5]
+  alpha: [0.1, 1]

@@ -1,0 +1,66 @@
+_target_: jepa.JEPA
+
+# Utonia-WM (frozen Utonia encoder, ground KEPT) on the REACHER lidar dataset.
+# Identical architecture to model/utoniawm_cube.yaml -- same frozen backbone, same
+# fixed projection, same TokenPredictor -- so the cube and reacher runs are
+# directly comparable. The ONLY differences are the environment-geometry
+# numbers: canonical_plane / canonical_center (the fitted table frame) and
+# grid_bounds (the token grid's workspace box). See model/utoniawm_cube.yaml for
+# the full recipe rationale; comments here cover only the per-env values.
+#
+# DERIVED with viz_grid.py (32 frames, seed 0) from reacher.lance:
+#   plane: RANSAC + SVD refit, residual std 0.04 mm, 96.3% of valid points are
+#     plane inliers at 0.008 m; exact 45 deg camera tilt (n = (1/sqrt2, 0,
+#     -1/sqrt2)), sign-matched to the cube convention. The fit procedure
+#     reproduces the checked-in cube plane to 0.005 deg / 0.005 mm.
+#   bounds: canonical p0.5/p99.5 bbox + 2 cm margin, z_lo pinned to -0.01 so
+#     the kept ground lands inside the bottom cell layer. Workspace is
+#     ~125 x 108 x 11 cm -- the smallest of the four, with the arm only
+#     0-8 cm above the table; the cube's own 8x8x4 grid carries over (verdict
+#     from viz_grid.py): ~16 x 14 x 2.8 cm cells, ~0.5% of points
+#     clamp into edge cells.
+# Run with: pixi run train --config-name=utoniawm_reacher run_name=utoniawm_reacher
+encoder:
+  _target_: pc_encoders.utonia_encoder.UtoniaEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  feature_dim: 576           # backbone coarsest-stage width (released ckpt)
+  proj_seed: 0               # seeds the fixed projection; part of the cache signature
+  ckpt: checkpoints/utonia/utonia.pth
+  pool: meanmax              # mean || max over each cell's super-point features
+  # quoted so YAML does not try to parse ${...} as a flow mapping; a
+  # whole-string interpolation keeps its int type
+  grid_dims: ["${grid_x}", "${grid_y}", "${grid_z}"]
+  grid_bounds: [[-0.61, -0.54, -0.01], [0.64, 0.54, 0.10]]
+  # Same perceptual-granularity settings as the cube arm (Utonia's own
+  # tabletop demo values), kept identical across environments so the frozen
+  # backbone sees every scene through the same lens.
+  coord_scale: 4.0
+  grid_size: 0.01
+  # Canonical frame: fitted table plane -> z = 0 with +z up, workspace center
+  # -> xy origin (see the derivation block above).
+  canonical_plane: [0.707106, 0.0, -0.707107, -0.567108]
+  canonical_center: [0.94, 0.0, 0.21]
+  max_clouds_per_forward: 16
+  bf16: false                # fp32 features everywhere (cache <-> live eval)
+
+# DINO-WM's own predictor (see model/utoniawm_cube.yaml).
+predictor:
+  _target_: module.TokenPredictor
+  num_frames: ${history_size}
+  num_tokens: ${num_tokens}
+  input_dim: ${embed_dim}
+  action_emb_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  dim_head: 64
+  mlp_dim: 2048
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}

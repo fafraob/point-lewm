@@ -1,0 +1,52 @@
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# swm-format .h5 with MuJoCo state (qpos/qvel, 2 DoF) + pixels + ep_len/offset
+# -- e.g. the LeWM reacher set:
+#   huggingface.co/datasets/quentinll/lewm-reacher  (reacher.tar.zst -> reacher.h5)
+input: ???
+# Output .lance: every source column (pixels included) + the lidar column.
+output: ???
+write_mode: append
+chunk_size: 50
+ep_start: null
+ep_end: null
+
+# The stored pixels come from the source project's own reacher renderer, while
+# swm/Reacher3D-v0 is a 3D re-skin (same 2-DoF dynamics, different link
+# geometry and colors). Joint angles replay exactly; the rendered scene does
+# not match pixel-for-pixel, so the replay-fidelity check does not apply.
+check_render: false
+check_render_tol: 5.0
+
+env_name: swm/Reacher3D-v0
+env:
+  # No goal/target object exists in this scene, so nothing has to be excluded
+  # from the cloud (the source h5's target_pos is carried as a column only).
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+
+# Oblique (45/45) scan, same protocol as the TwoRoom / PushT iso tables: the
+# ray grid is built from the iso camera's own fov, points are sensor-frame, and
+# no per-point colors are sampled (the stored image is a different renderer's
+# top-down view). This scene is a native MuJoCo model rebuilt once, so `warp`
+# would also work; `mujoco` keeps it identical to the other two arms.
+lidar:
+  h_res: 100
+  v_res: 100
+  match_camera_fov: true  # h_fov / v_fov come from the camera, not set here
+  backend: mujoco
+  mount_camera: iso
+  frame: sensor
+  max_range: 4.0  # workspace is ~0.6 m across; the eye sits 0.80 m out
+  miss_value: -1.0
+  include_static: true
+  add_rgb: false
+  rgb_fill_value: -1.0
+  ray_noise_std: 0.0
+  range_noise_std: 0.0

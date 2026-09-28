@@ -1,0 +1,83 @@
+_target_: jepa.JEPA
+
+# point_lewm (PointViT, geometry only, ground KEPT) on the TWO-ROOM lidar dataset.
+# Identical architecture to model/point_lewm_cube.yaml -- same tokenizer, same tiny ViT,
+# same CLS readout -- so the cube and two-room runs are directly comparable.
+# The ONLY differences are the three numbers that are properties of the
+# environment's geometry rather than of the model: the workspace affine
+# (norm_center / norm_scale) and the ball-query radius, plus the token count
+# (OGB-Cube uses 512 centres, the other environments 256).
+#
+# The three values are measured from the two-room table (two_room.lance) with
+# the method in the README's "Adding an environment" paragraph. They cannot be
+# carried over from another environment: the cube values ([1.27, 0, 0.25] /
+# 0.75 m, radius 0.03 m) come from the cube table (cube.lance), and feeding
+# two-room coordinates through them would either squash every cloud into a
+# point or push it far outside [-1, 1].
+#
+#   norm_center = midpoint of per-axis p1 / p99   [4.2851, 0.0, 0.2939] -> [4.29, 0.0, 0.29]
+#   norm_scale  = largest p1/p99 half-extent       1.7658               -> 1.77
+#   NN-32 distance (group_size-th neighbour)       median 0.1270
+#   group_radius                                   0.15, set above the median
+#                                                  and checked with `pixi run viz-radius`
+#
+# Keep the SAME values in model/point_delta_jepa_tworoom.yaml. The two MUST stay
+# identical, or the point_lewm/point_delta_jepa comparison stops isolating the loss.
+# Run with: pixi run train --config-name=point_lewm_tworoom run_name=point_lewm_tworoom
+encoder:
+  _target_: pc_encoders.pointvit_encoder.PointViTEncoder
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  # 256 FPS centers x 32 points assumes a few thousand valid points per cloud
+  # (the cube lidar has ~7k). If the measured points/frame is substantially
+  # lower, drop num_tokens so the centers are not resampling the same handful
+  # of points -- keep the value in both two-room model configs in sync.
+  num_tokens: 256
+  group_size: 32
+  # RAW sensor-frame units, measured for two-room (see header).
+  group_radius: 0.15
+  group_max_neighbors: 128
+  vit_size: tiny             # tiny | small | base | large | giant
+  vit_pretrained: false      # no point-cloud-pretrained ViT exists here
+  tokenizer_hidden: [128, 256]  # (h1, h2) widths of the mini-PointNet tokenizer
+  use_feat: false            # geometry only
+  # Fixed workspace affine: (coord - center) / scale -> ~[-1, 1]. Constant, NOT
+  # per-cloud (that would erase the absolute agent/target position). See header.
+  norm_center: [4.29, 0.0, 0.29]
+  norm_scale: 1.77
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true

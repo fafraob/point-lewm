@@ -1,0 +1,54 @@
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# Source image dataset (swm HDF5 format: qpos/qvel/pixels + ep_len/ep_offset).
+input: ???
+# Output .lance table: every source column (pixels included) + lidar columns,
+# same schema as an online World.collect run.
+output: ???
+# append resumes an interrupted run (skips episodes already written);
+# overwrite restarts from scratch; error refuses to touch an existing table.
+write_mode: append
+# Episodes per Lance commit — resume granularity for interrupted runs.
+chunk_size: 50
+
+# Episode range [ep_start, ep_end) for sharding across processes; null = all.
+ep_start: null
+ep_end: null
+
+# Replay-fidelity check: re-render the first frame from the restored qpos/qvel
+# and compare against the stored pixels before converting anything.
+check_render: true
+check_render_tol: 5.0  # mean abs uint8 difference
+
+env_name: swm/OGBCube-v0
+env:
+  env_type: single
+  multiview: false
+  width: 224
+  height: 224
+  visualize_info: false
+  terminate_at_goal: false
+  mode: data_collection
+
+# Lidar sensor block (constructor arguments of the LiDAR wrapper).
+# add_rgb colors are sampled from the *stored* h5 pixels, not a re-render.
+lidar:
+  h_res: 100
+  v_res: 100
+  match_camera_fov: true
+  backend: warp                # warp (GPU, fast) | mujoco (CPU)
+  mount_camera: front_pixels
+  frame: sensor
+  max_range: 20.0
+  miss_value: -1.0
+  min_alpha: 0.5
+  add_rgb: true
+  rgb_fill_value: -1.0
+  ray_noise_std: 0.0
+  range_noise_std: 0.0

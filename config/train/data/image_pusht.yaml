@@ -1,0 +1,33 @@
+# Push-T IMAGE dataset -- the pixel sibling of lidar_pusht.yaml, and the table
+# the released image LeWM checkpoint was trained on (`pusht_expert_train.h5`, HF
+# repo quentinll/lewm-pusht, docs/data.md). It lives under $PLWM_DATA_ROOT
+# (default <repo>/data); override per run with
+# `data.dataset.name=/path/to/file.h5`.
+#
+# 1,794,871 six-frame windows, `pixels` at 224x224 and `action` width 2, so
+# train.py sets action_encoder.input_dim = 5 x 2 = 10. That window count is
+# exactly what pusht.lance (2,336,736 frames, 18,685 episodes) predicts under
+# the same windowing, so this file and the LiDAR table hold the same episodes.
+#
+# config/eval/image_pusht.yaml plans on pusht.lance, whose `pixels` column is
+# this file's image data copied verbatim by lidar_from_h5.py.
+#
+# SIZE: the long table on the image side too. Delta-JEPA's loss is per-sample,
+# so this is the arm that can use both GPUs to halve wall time --
+# `trainer.devices=2 loader.batch_size=64 ++accumulate_grad_batches=1` is
+# exactly the single-GPU 64 x 2 objective at effective batch 128.
+#
+# Loads pixels + action only: the JEPA reads exactly those two columns
+# (jepa.encode), so proprio / state would cost IO and a z-score pass for nothing.
+dataset:
+  name: ${oc.env:PLWM_DATA_ROOT,data}/pusht_expert_train.h5
+  # Overridden by the Delta-JEPA config to ldad_horizon + 1 = 6 frames.
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 5
+  keys_to_load:
+    - pixels
+    - action
+  keys_to_cache:
+    - action
+
+# NO `obs:` block -- its absence selects the image path in train.py.

@@ -1,0 +1,86 @@
+defaults:
+  - _self_
+  - launcher: local
+  - data: lidar_cube
+  - model: voxstats_cube
+
+# Vox-WM: the geometric baseline for Utonia-WM (ground kept) on the cube
+# (cube.lance). Parameter-free per-cell point statistics on the SAME token
+# grid, SAME TokenPredictor, prediction loss ONLY -- no SIGReg (targets are a
+# deterministic function of the input, collapse is impossible) and no LDAD.
+# It ablates the frozen Utonia foundation encoder at fixed tokenization; see
+# pc_encoders/voxstats_encoder.py.
+#
+# Protocol mirrors config/train/utoniawm_cube.yaml (keep the two in sync): 100
+# epochs, effective batch 512, lr 1e-3. NO precompute step: the statistics
+# cost microseconds per cloud, so training encodes RAW clouds live through
+# data=lidar_cube -- the epoch is dataloader-bound like the point_lewm arms
+# (a window fetches num_steps x frameskip raw lidar rows), not GPU-bound.
+# Run with: pixi run train --config-name=voxstats_cube run_name=voxstats_cube
+#           (2 ranks x 256 = the utoniawm arm's effective batch 512; a 1-GPU
+#           run must override loader.batch_size=512, or add
+#           ++accumulate_grad_batches=2, to match)
+
+output_model_name: voxstats_cube
+subdir: ${hydra:job.id}
+
+# Unused by this arm; kept so shared tooling that reads the key keeps working.
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Per-TOKEN latent width handed to the predictor. 192 = the Utonia-WM arm's
+# token width: the 25-dim statistics vector is lifted by a FIXED orthonormal
+# matrix (model/voxstats_cube.yaml lift_seed; see pc_encoders/voxstats_encoder.py),
+# so both arms run the IDENTICAL TokenPredictor (width, params, capacity) and
+# differ only in what a token holds. Setting embed_dim: 25 skips the lift and
+# runs a narrower predictor on the raw statistics width.
+embed_dim: 192
+history_size: 3
+
+# Token grid resolution: same as config/train/utoniawm_cube.yaml (8 x 8 x 4 = 256
+# tokens = DINO-WM's patch count). num_tokens is derived so the encoder grid
+# and the predictor can never disagree.
+grid_x: 8
+grid_y: 8
+grid_z: 4
+num_tokens: ${eval:'${grid_x} * ${grid_y} * ${grid_z}'}
+
+trainer:
+  # Follows utoniawm_cube.yaml: this arm's encoder is likewise frozen (parameter-
+  # free), so all fitted capacity sits in the predictor and it keeps improving
+  # past the trained-encoder arms' 10-epoch budget. Checkpoints are exported
+  # every epoch, so weights_epoch_10.pt remains the equal-budget point.
+  max_epochs: 100
+  devices: 2
+  strategy: ddp
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+accumulate_grad_batches: 1
+
+loader:
+  # PER RANK (see utoniawm_cube.yaml): a 2-GPU run gives 2 x 256 x 1 =
+  # effective batch 512, the frozen-encoder protocol. A 1-GPU run must
+  # override loader.batch_size=512 (or add ++accumulate_grad_batches=2) to
+  # match. Unlike utoniawm there is no token cache: a batch reads 256 windows x
+  # num_steps x frameskip RAW lidar rows, so the disk stream is ~6x the
+  # utoniawm cache path. Raise num_workers (the paper's runs used 16) if the
+  # loader cannot keep the GPU busy, and watch the first-epoch ETA.
+  batch_size: 256
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 1e-3  # follows utoniawm_cube.yaml (raised together with the effective batch)
+  weight_decay: 1e-3
+
+num_preds: 1
+
+# Prediction loss only (deterministic targets -- see header).
+loss: {}

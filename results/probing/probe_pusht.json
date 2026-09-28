@@ -1,0 +1,102 @@
+{
+ "env": "pusht",
+ "dataset": "pusht.lance",
+ "stride": 10,
+ "seed": 0,
+ "n_frames": 233674,
+ "n_test": 46530,
+ "models": {
+  "Point-LeWM": {
+   "run": "point_lewm_pusht",
+   "policy": "point_lewm_pusht/weights.pt",
+   "latent_dim": 192,
+   "targets": {
+    "agent_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.007744064772606167,
+      "r2": 0.9545769742353569,
+      "lambda": 1.0
+     },
+     "mlp": {
+      "mse": 0.000588808695759063,
+      "r2": 0.996546326335942,
+      "best_epoch": 94
+     }
+    },
+    "block_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.0036385301168200923,
+      "r2": 0.9579429845466086,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.00019288266700617082,
+      "r2": 0.9977705092313323,
+      "best_epoch": 87
+     }
+    },
+    "block_angle": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.026555221636795256,
+      "r2": 0.8912261127183981,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.0019798041247546735,
+      "r2": 0.9918904464948121,
+      "best_epoch": 48
+     }
+    }
+   }
+  },
+  "Point-Delta-JEPA": {
+   "run": "point_deltajepa_pusht",
+   "policy": "point_deltajepa_pusht/weights.pt",
+   "latent_dim": 192,
+   "targets": {
+    "agent_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.007351244740289348,
+      "r2": 0.9568810709820568,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.0017918164413261318,
+      "r2": 0.9894900511850345,
+      "best_epoch": 97
+     }
+    },
+    "block_pos": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.004691449844633808,
+      "r2": 0.9457725036540269,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.0007254796377007749,
+      "r2": 0.9916143312397349,
+      "best_epoch": 95
+     }
+    },
+    "block_angle": {
+     "dim": 3,
+     "linear": {
+      "mse": 0.0838071661765198,
+      "r2": 0.6567141720088694,
+      "lambda": 0.01
+     },
+     "mlp": {
+      "mse": 0.009329337366375898,
+      "r2": 0.9617857344599939,
+      "best_epoch": 91
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,192 @@
+[workspace]
+name = "point-lewm"
+version = "0.1.0"
+description = "Does Latent Planning Survive Point Clouds? Action-conditioned JEPA world models for point-cloud observations and goals"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[activation.env]
+# Ignore ~/.local/lib user site-packages inside the environment, so stale
+# user-site packages cannot shadow the pinned versions.
+PYTHONNOUSERSITE = "1"
+# Reduce CUDA allocator fragmentation: the point-cloud batches vary in size.
+PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
+# Route fp16 Linear+bias through plain GEMM + bias-add instead of cuBLASLt's
+# fused epilogue. On some architectures (e.g. A100) cuBLASLt has no algorithm
+# for the very large fp16 batches the point tokenizer produces and fails with
+# CUBLAS_STATUS_NOT_SUPPORTED. Cost: one extra elementwise kernel per layer.
+# train.py / eval_lidar.py set the same default for bare-python runs.
+DISABLE_ADDMM_CUDA_LT = "1"
+# Headless MuJoCo rendering (the mirror scenes and the dataset conversion).
+MUJOCO_GL = "egl"
+
+[system-requirements]
+# PyPI PyTorch wheels bundle their own CUDA runtime; only a recent enough
+# driver is needed. Declaring CUDA 12 lets pixi resolve GPU-capable environments.
+cuda = "12"
+
+[dependencies]
+# Managed by conda (from conda-forge).
+python = "3.10.*"
+pip = "*"
+git = "*"
+
+# CUDA toolchain (conda-forge) to build the two CUDA extensions (torch-cluster,
+# torch-scatter; see the build-kernels task) from source, in-env, on any
+# machine. Pinned to 12.6 to match the torch cu126 build.
+cuda-version = "12.6.*"
+cuda-nvcc = "*"
+cuda-cudart-dev = "*"
+# Headers pulled in by torch's ATen/cuda/CUDAContextLight.h (included by
+# torch-cluster's CUDA ops): cusparse.h, cublas_v2.h, cusolverDn.h.
+libcusparse-dev = "*"
+libcublas-dev = "*"
+libcusolver-dev = "*"
+# curand.h: included by torch-cluster's random-walk CUDA op.
+libcurand-dev = "*"
+cxx-compiler = "*"
+ninja = "*"
+setuptools = "*"
+hdf5plugin = ">=7.0.0,<8"
+
+[pypi-dependencies]
+# --- Core dependency: the vendored stable-worldmodel fork -------------------
+# Installed editable from ./stable-worldmodel (environments, LiDAR sensor,
+# dataset conversion, CEM planner, evaluation loop). Its [train,env,viz] extras
+# pull in the training/env stack (lightning, stable-pretraining, MuJoCo envs,
+# warp, polyscope, ...).
+stable-worldmodel = { path = "./stable-worldmodel", editable = true, extras = [
+    "train",
+    "env",
+    "viz"
+] }
+
+# --- Direct imports of this repository ---------------------------------------
+# torch is pinned to 2.7.0 (cu126 build) so the compiled extensions target one
+# known torch/CUDA combination on every machine; torchvision 0.22.0 pairs with it.
+torch = "==2.7.0"
+torchvision = "==0.22.0"
+lightning = "*"
+hydra-core = "*"
+omegaconf = "*"
+einops = "*"
+numpy = "*"
+scikit-learn = "*"
+wandb = "*"
+# TensorBoard is the default training logger (train.py).
+tensorboard = "*"
+
+# --- Point-cloud encoder stack -------------------------------------------------
+# torch-cluster (FPS + ball query for pc_encoders) is NOT listed here on
+# purpose: its build imports torch (unresolvable before the environment
+# exists) and the prebuilt wheels require glibc >= 2.32. It is compiled from
+# source in-env by the build-kernels task below, against the exact torch.
+
+# stable_pretraining.data imports HuggingFace `datasets` at module load; pin a
+# modern version (older ones use a pyarrow API removed in the resolved pyarrow).
+datasets = ">=2.20"
+
+# Interactive 3D viewer for viz_radius.py and the inspection scripts.
+polyscope = "*"
+
+# --- Utonia-WM arm: frozen Utonia encoder (pc_encoders/utonia_encoder.py) ----
+# The Utonia package (Pointcept's cross-domain PTv3) is vendored under ./utonia
+# (see utonia/README.md); its imports are declared here:
+#  * spconv-cu126: sparse-conv kernels; MUST match the torch CUDA build (cu126).
+#  * torch-scatter is compiled in-env by build-kernels (same reason as
+#    torch-cluster).
+#  * flash-attn is deliberately absent: the encoder always loads Utonia with
+#    enable_flash=false + enc_patch_size=1024, so runs are reproducible across
+#    machines with and without flash-attn builds.
+spconv-cu126 = "*"
+timm = "*"
+addict = "*"
+accelerate = ">=1.15.0, <2"
+
+# --- Tests (pixi run test) ---------------------------------------------------
+pytest = ">=8"
+
+[tasks]
+# One-time bootstrap after cloning: `pixi run build-kernels` (installs the
+# environment, then compiles the two CUDA extensions; cached, re-running is a
+# no-op while the built extensions exist). Set TORCH_CUDA_ARCH_LIST (e.g. "8.0"
+# for A100, "8.9" for RTX 4090, "9.0" for H100) to compile for one GPU only.
+# All other tasks only run the instant check-kernels guard.
+
+[tasks.build-torch-cluster]
+# FPS + radius kernels for the point encoder. FORCE_CUDA=1 compiles the CUDA
+# ops even when no GPU is visible at build time.
+cmd = "bash -c 'FORCE_CUDA=1 python -m pip install --no-build-isolation --no-deps torch-cluster==1.6.3'"
+outputs = [
+    ".pixi/envs/default/lib/python3.10/site-packages/torch_cluster/_fps_cuda.so",
+]
+
+[tasks.build-torch-scatter]
+# Scatter kernels required by the frozen Utonia encoder (PTv3 grid pooling).
+cmd = "bash -c 'FORCE_CUDA=1 python -m pip install --no-build-isolation --no-deps torch-scatter==2.1.2'"
+outputs = [
+    ".pixi/envs/default/lib/python3.10/site-packages/torch_scatter/_scatter_cuda.so",
+]
+
+[tasks.build-kernels]
+depends-on = ["build-torch-cluster", "build-torch-scatter"]
+
+# Instant guard (milliseconds, no network): every task below depends on it so
+# a recreated environment cannot silently miss the compiled kernels.
+[tasks.check-kernels]
+cmd = """bash -c '
+sp=.pixi/envs/default/lib/python3.10/site-packages
+for pkg in torch_cluster/_fps_cuda.so torch_scatter/_scatter_cuda.so; do
+  if ! ls $sp/$pkg >/dev/null 2>&1; then
+    echo "ERROR: compiled CUDA extension missing: $pkg" >&2
+    echo "Run once:  pixi run build-kernels" >&2
+    exit 1
+  fi
+done'"""
+
+# --- Training -------------------------------------------------------------------
+# `pixi run train --config-name=<config/train/*.yaml>` plus Hydra overrides.
+[tasks.train]
+cmd = "python train.py"
+depends-on = ["check-kernels"]
+# Frozen Utonia token cache for the Utonia-WM arm (run once per environment).
+[tasks.precompute-utonia]
+cmd = "python precompute_utonia.py"
+depends-on = ["check-kernels"]
+
+# --- Evaluation -----------------------------------------------------------------
+# Closed-loop planning of a point-cloud world model toward a recorded goal cloud
+# (config/eval/lidar_*.yaml, utoniawm_*.yaml, voxstats_*.yaml).
+[tasks.eval-lidar]
+cmd = "python eval_lidar.py"
+depends-on = ["check-kernels"]
+# The same with the goal latent predicted from a 3D target (config/eval/3dtarget_*.yaml).
+[tasks.eval-3dtarget]
+cmd = "python eval_3dtarget.py"
+depends-on = ["check-kernels"]
+# Image world models (LeWM and DINO-WM checkpoints; config/eval/image_*.yaml, dinowm_*.yaml).
+[tasks.eval]
+cmd = "python eval.py"
+depends-on = ["check-kernels"]
+
+# --- Downloads (Hugging Face Hub) ----------------------------------------------------
+# Released checkpoints into checkpoints/<env>/<model>/ (all envs, or a subset:
+# `pixi run download-checkpoints cube pusht`; --image-lewm / --utonia for the
+# third-party checkpoints the image LeWM and Utonia-WM arms need).
+[tasks.download-checkpoints]
+cmd = "python scripts/download_checkpoints.py"
+# The re-sensed LiDAR tables into $PLWM_DATA_ROOT (default data/): downloads
+# the .lance.tar.zst archives and extracts them (`pixi run download-data cube`).
+[tasks.download-data]
+cmd = "bash scripts/download_data.sh"
+
+# --- Tools ------------------------------------------------------------------------
+# Interactive polyscope tuner for the encoder's ball-query radius (needs a display).
+[tasks.viz-radius]
+cmd = "python viz_radius.py"
+depends-on = ["check-kernels"]
+[tasks.tensorboard]
+cmd = "tensorboard --logdir experiment_logs"
+[tasks.test]
+cmd = "python -m pytest -q tests stable-worldmodel/tests"
+depends-on = ["check-kernels"]

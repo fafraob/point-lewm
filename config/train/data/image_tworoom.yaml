@@ -1,0 +1,32 @@
+# Two-Room IMAGE dataset -- the pixel sibling of lidar_tworoom.yaml, and the
+# table the released image LeWM checkpoint was trained on (`tworoom.h5`, HF repo
+# quentinll/lewm-tworooms, docs/data.md). It lives under $PLWM_DATA_ROOT
+# (default <repo>/data); override per run with
+# `data.dataset.name=/path/to/file.h5`.
+#
+# The smallest of the four (~13 GB), so this is the arm to smoke-test with:
+# 630,809 six-frame windows, `pixels` at 224x224 and `action` width 2, so
+# train.py sets action_encoder.input_dim = 5 x 2 = 10 -- the same width the
+# point-cloud Two-Room arm uses. That window count is exactly what
+# two_room.lance (920,809 frames, 10,000 episodes) predicts under the same
+# windowing, so this file and the LiDAR table hold the same episodes: the image
+# and point-cloud Two-Room arms train on identical episodes at an identical
+# optimizer budget.
+#
+# config/eval/image_tworoom.yaml plans on two_room.lance, whose `pixels` column
+# is this file's image data copied verbatim by lidar_from_h5.py.
+#
+# Loads pixels + action only: the JEPA reads exactly those two columns
+# (jepa.encode), so `proprio` would cost IO and a z-score pass for nothing.
+dataset:
+  name: ${oc.env:PLWM_DATA_ROOT,data}/tworoom.h5
+  # Overridden by the Delta-JEPA config to ldad_horizon + 1 = 6 frames.
+  num_steps: ${eval:'${num_preds} + ${history_size}'}
+  frameskip: 5
+  keys_to_load:
+    - pixels
+    - action
+  keys_to_cache:
+    - action
+
+# NO `obs:` block -- its absence selects the image path in train.py.

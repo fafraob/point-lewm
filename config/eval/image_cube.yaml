@@ -1,0 +1,95 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel (image LeWM) eval of the released LeWM OGB-Cube checkpoint
+# (Hugging Face quentinll/lewm-cube, placed in checkpoints/image_lewm_cube as
+# weights.pt + config.json, see README, Baselines): ViT-tiny encoder, 224 px,
+# history_size=3, frameskip=5. Run with:
+#   python eval.py --config-name=image_cube
+#
+# SEQUENCE-MATCHED with the lidar eval: this config evaluates on the re-sensed
+# LiDAR dataset (its `pixels` column is the original image data) so that the
+# sampled (episode, start) pairs are IDENTICAL to
+#   python eval_lidar.py --config-name=lidar_cube ...
+# Both scripts sample via eval_lidar.sample_eval_starts, which is
+# deterministic in (dataset.lengths, num_eval, goal_offset_steps, seed,
+# max_start_step, min_goal_displacement) -- keep all six in sync with
+# lidar_cube.yaml or the comparison breaks.
+
+world:
+  env_name: swm/OGBCube-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+  env_type: single
+  ob_type: states
+  multiview: False
+  width: 224
+  height: 224
+  visualize_info: False
+  terminate_at_goal: True
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+
+seed: 42
+# load_pretrained resolves <cache_dir>/checkpoints/<policy>. Default: the released
+# image Delta-JEPA checkpoint (checkpoints/cube/image-delta-jepa/, scripts/download_checkpoints.py).
+# The image LeWM checkpoint of Maes et al. is policy=image_lewm_cube (a folder with
+# weights.pt + config.json, --image-lewm of the download script); DINO-WM is
+# cache_dir=checkpoints/cube/dino-wm policy=model_latest.pth.
+policy: cube/image-delta-jepa/weights.pt
+cache_dir: ${hydra:runtime.cwd}
+# run=<folder under logs_root> evaluates a training run of your own instead
+logs_root: null
+run: null
+
+# must match training: history_size=3 frames, frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5 # frameskip
+
+# evaluation from dataset (replay expert trajectories)
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  # Only sample starts whose cube moves >= this (metres) between start and
+  # goal in the expert data. null keeps every draw -- but then ~half the
+  # windows are trivial (cube never moves; random == planner, measured
+  # on the lidar eval). Set to 0.05 for a policy-sensitive metric.
+  min_goal_displacement: null
+  # MUST equal the dataset's stored pixel resolution (224 for this dataset)
+  img_size: 224
+  # the same dataset as lidar_cube.yaml => the same sampled eval sequences; it
+  # serves start states + goal images from the same env / front camera the
+  # checkpoint was trained on.
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/cube.lance
+  callables:
+    # -- set state
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    # -- set target pos (goal_* keys come from the dataset slice end state)
+    - method: set_target_pos
+      args:
+        cube_id:
+          value: 0
+          in_dataset: False
+        target_pos:
+          value: goal_privileged_block_0_pos
+        target_quat:
+          value: goal_privileged_block_0_quat
+
+output:
+  # directory for results + videos. Override with output.dir=/path/to/out.
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_cube_results.txt

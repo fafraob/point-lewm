@@ -1,0 +1,27 @@
+# environment
+.pixi/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+*.ini
+
+# data and run outputs (downloadable or regenerable; see docs/)
+/data/
+/experiment_logs/
+/eval_results/
+/outputs/
+/tmp/
+/tables/
+*.ckpt
+*.pth
+*.mp4
+
+# checkpoints: downloaded from the Hugging Face Hub (scripts/download_checkpoints.py)
+/checkpoints/
+
+# visualisation intermediates (scripts/attention_all.sh, scripts/scene_pairs.py)
+/attention*/
+/occlusion*/
+/figures/_clouds/

@@ -1,0 +1,92 @@
+_target_: jepa.JEPA
+
+# Utonia-WM arm (ground KEPT): FROZEN Utonia foundation encoder (Pointcept's
+# cross-domain PTv3, ICML'26 -- the point-cloud analogue of DINOv2), only the
+# predictor + action encoder train, planning cost lives in the frozen feature
+# space. See pc_encoders/utonia_encoder.py for the full recipe. The encoder
+# has NO trainable parameters and its 137M frozen backbone is deliberately
+# kept out of the module tree (not in the optimizer, not in the weight
+# exports). No projector / pred_proj: DINO-WM predicts raw frozen features
+# (a trained projector could collapse under the pure prediction loss).
+#
+# The latent is a fixed grid of TOKENS per frame (not one pooled vector),
+# which is what makes this arm a DINO-WM counterpart rather than "LeWM with a frozen
+# encoder": DINOv2 patches have fixed spatial identity across frames, and the
+# grid cells here reproduce that property (measured: the canonical table bbox
+# is bit-stable across every frame of the dataset, so cell edges are
+# constants). Native super-points would NOT: their count varies per frame and
+# a fixed-voxel occupancy set turns over ~50% per model step, so there is no
+# token correspondence to predict against.
+# Run with: pixi run train --config-name=utoniawm_cube run_name=utoniawm_cube
+encoder:
+  _target_: pc_encoders.utonia_encoder.UtoniaEncoder
+  # Per-TOKEN width. 192 = the other arms' latent width; the 1152-d per-cell
+  # pooled frozen features are compressed by a FIXED seeded random orthogonal
+  # projection (JL-style, training-free -- a trained projection could collapse
+  # under the pure prediction loss). Set embed_dim: 1152 to plan in the raw
+  # pooled space (but see the cache-size note in utoniawm_cube.yaml).
+  embed_dim: ${embed_dim}
+  in_channels: 3
+  feature_dim: 576           # backbone coarsest-stage width (released ckpt)
+  proj_seed: 0               # seeds the fixed projection; part of the cache signature
+  # Pointcept/Utonia utonia.pth (~550 MB), relative to the repo root. Download
+  # once per machine (precompute_utonia.py does it implicitly via the resolve
+  # error message; offline machines: copy the file).
+  ckpt: checkpoints/utonia/utonia.pth
+  pool: meanmax              # mean || max over each cell's super-point features
+  # Token grid. Cells are indexed x-major and span grid_bounds in CANONICAL
+  # METERS (see the canonical frame below): the workspace is ~168 x 163 x 49 cm,
+  # so 8x8x4 gives ~21 x 20 x 12 cm cells. Adjustable per environment -- keep
+  # the product in the few-hundred range (DINO-WM uses 256 patches) and mind
+  # that the embedding cache scales linearly with it.
+  # quoted so YAML does not try to parse ${...} as a flow mapping; a
+  # whole-string interpolation keeps its int type
+  grid_dims: ["${grid_x}", "${grid_y}", "${grid_z}"]
+  grid_bounds: [[-0.80, -0.82, -0.01], [0.90, 0.82, 0.50]]
+  # Perceptual-granularity rescale: 4.0 is Utonia's OWN tabletop-manipulation
+  # demo setting (their transform.default(4.0)); grid 0.01 on scaled coords
+  # = 2.5 mm real voxels. NOTE grid_size is the input DEDUP voxel, unrelated
+  # to grid_dims/grid_bounds (the output token grid).
+  coord_scale: 4.0
+  grid_size: 0.01
+  # Canonical frame: fitted table plane (same values as the point_lewm/point_delta_jepa
+  # noground configs' ground_plane) -> z = 0 with +z up, workspace center -> xy
+  # origin. Utonia expects gravity-aligned scenes with the ground on the
+  # xy-plane, and it is this frame that makes the token grid table-aligned and
+  # shared across frames.
+  canonical_plane: [0.628104, 0.0, -0.778129, -0.638995]
+  canonical_center: [1.27, 0.0, 0.25]
+  # Clouds per backbone forward: throughput only. Batching used to corrupt
+  # features (the non-flash attention shrank its patch size to the batch
+  # minimum) until utonia/model.py was patched; a cloud now moves by at most
+  # half an fp16 cache step between chunk 1 and 64. 16 peaks at ~2 GB here.
+  max_clouds_per_forward: 16
+  bf16: false                # fp32 features everywhere (cache <-> live eval)
+
+# DINO-WM's own predictor, not the other arms' ARPredictor: a ViT over all
+# num_frames x num_tokens tokens with a frame-block-causal mask, and the action
+# embedding TILED over a frame's tokens and CONCATENATED onto each of them
+# (ARPredictor instead injects the action via AdaLN on a single token/frame).
+predictor:
+  _target_: module.TokenPredictor
+  num_frames: ${history_size}
+  num_tokens: ${num_tokens}
+  input_dim: ${embed_dim}
+  # == the action encoder's emb_dim: every arm shares the SAME action encoder,
+  # so the only difference here is the injection mechanism. (DINO-WM's own
+  # ratio is far thinner -- 10-d action on 384-d patches -- lower this to
+  # ~32 to mimic it.)
+  action_emb_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  dim_head: 64
+  mlp_dim: 2048
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???
+  emb_dim: ${embed_dim}
