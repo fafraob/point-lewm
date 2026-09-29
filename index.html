@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="description"
-        content="Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations">
+        content="Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations and Goals">
   <meta name="keywords" content="JEPA, World Models, Point Clouds, Latent Planning">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations</title>
+  <title>Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations and Goals</title>
 
   <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
         rel="stylesheet">
@@ -47,38 +47,47 @@
     <div class="container is-max-desktop">
       <div class="columns is-centered">
         <div class="column has-text-centered">
-          <h1 class="title is-1 publication-title" style="margin-bottom: 0.5rem;">Does Latent Planning Survive Point&nbsp;Clouds?</h1>
-          <h2 class="subtitle is-3 publication-title has-text-grey-dark" style="font-weight: 400; margin-bottom: 1.5rem;">Action-Conditioned JEPA World Models for Geometric&nbsp;Observations</h2>
+          <h1 class="title is-1 publication-title" style="margin-bottom: 0.75rem; line-height: 1.15;">Does Latent Planning Survive Point&nbsp;Clouds?</h1>
+          <h2 class="subtitle is-3 publication-title has-text-grey-dark" style="font-weight: 400; margin-bottom: 1.5rem;">Action-Conditioned JEPA World Models for Geometric Observations and&nbsp;Goals</h2>
           <div class="is-size-5 publication-authors">
             <span class="author-block">
-              <a href="https://scholar.google.com/citations?hl=de&user=njm6I3wAAAAJ">Fabio F. Oberweger</a>*,
+              <a href="https://scholar.google.com/citations?user=njm6I3wAAAAJ">Fabio F. Oberweger</a><sup>*&dagger;</sup>,
             </span>
             <span class="author-block">
-              <a href="https://scholar.google.com/citations?hl=de&user=fsvMYQYAAAAJ">Michael Schwingshackl</a>*
+              <a href="https://scholar.google.com/citations?user=fsvMYQYAAAAJ">Michael Schwingshackl</a><sup>*</sup>,
             </span>
-            <!-- Add more authors here:
             <span class="author-block">
-              <a href="#">Author Name</a>,
+              <a href="https://scholar.google.com/citations?user=S8yQbTQAAAAJ">Markus Murschitz</a>
             </span>
-            -->
           </div>
           <div class="is-size-6 has-text-grey">
-            * Joint first authors: F.F.O. led algorithm development, M.S. led data generation and environment design.
+            <sup>*</sup>Joint first authors: F.F.O. led algorithm development, M.S. led data generation and environment design.
+            <sup>&dagger;</sup>Correspondence.
           </div>
           <div class="is-size-5 publication-authors">
-              <span class="author-block">AIT Austrian Institute of Technology</span>
+              <span class="author-block">AIT Austrian Institute of Technology<br>Center for Vision, Automation &amp; Control</span>
           </div>
 
           <div class="column has-text-centered">
             <div class="publication-links">
               <!-- PDF Link. -->
               <span class="link-block">
-                <a href="#"
+                <a href="https://arxiv.org/pdf/2608.29434"
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="fas fa-file-pdf"></i>
                   </span>
                   <span>Paper</span>
+                </a>
+              </span>
+              <!-- arXiv Link. -->
+              <span class="link-block">
+                <a href="https://arxiv.org/abs/2608.29434"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
                 </a>
               </span>
               <!-- Code Link. -->
@@ -91,17 +100,16 @@
                   <span>Code</span>
                   </a>
               </span>
-              <!-- Dataset Link.
+              <!-- Hugging Face Link. -->
               <span class="link-block">
-                <a href="#"
+                <a href="https://huggingface.co/collections/fafraob/point-lewm-point-delta-jepa-and-more-6aba3f4ea8842e5c1f72d6e5"
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
-                      <i class="far fa-images"></i>
+                      <span aria-hidden="true">&#129303;</span>
                   </span>
-                  <span>Data</span>
+                  <span>Data &amp; Checkpoints</span>
                   </a>
               </span>
-              -->
             </div>
           </div>
         </div>
@@ -116,42 +124,57 @@
       <div class="column is-full">
         <div class="content is-size-5">
           <p>
-            Thanks for visiting. Code, Weights, and Data for this paper will be made available soon.
-          </p>
-          <p>
-            🌍 ❤️
+            Code, checkpoints and point-cloud datasets are available on
+            <a href="https://github.com/fafraob/point-lewm">GitHub</a> and
+            <a href="https://huggingface.co/collections/fafraob/point-lewm-point-delta-jepa-and-more-6aba3f4ea8842e5c1f72d6e5">Hugging Face</a>.
           </p>
         </div>
       </div>
     </div>
 
-    <!-- Abstract.
+    <!-- Abstract. -->
     <div class="columns is-centered has-text-centered">
-      <div class="column is-full">
+      <div class="column is-four-fifths">
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            Abstract goes here.
+            Latent action world models let agents plan new behaviors at test time by predicting how actions
+            change the environment, and joint-embedding predictive architectures (JEPAs) do so by forecasting
+            future latent states rather than pixels. Yet nearly all such models see the world through a camera,
+            even though robotic manipulation is fundamentally geometric: in robotics goals for manipulation are
+            traditionally specified by target object poses, not by images of the object once placed. We ask
+            whether latent planning survives a shift from appearance to geometry, on the observation side as
+            well as on the goal specifications side. To answer this, we extend the stable-worldmodel evaluation
+            platform with simulated LiDAR-style raycast point clouds as a new sensor modality, and adapt three
+            JEPA designs to point clouds: a frozen-encoder model built on Utonia features, a distribution-prior
+            model based on LeWM, and an action-sensitive model based on Delta-JEPA. We further introduce a
+            goal-encoding mechanism that constructs the goal latent from the current latent and a 3D target
+            pose, removing the need for goal images or goal point clouds. A comparative evaluation of the
+            different anti-collapse mechanisms shows that point-cloud world models can match their image-based
+            counterparts, demonstrating that the modality shift from appearance to geometry is achievable. All
+            models are released as open weights with open-source training and inference code, to make
+            world-model planning accessible for LiDAR-driven and pose-directed robotic tasks.
           </p>
         </div>
       </div>
     </div>
-    -->
   </div>
 </section>
 
-<!-- BibTeX.
 <section class="section" id="BibTeX">
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
-    <pre><code>@misc{key,
-      title={Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations},
-      author={},
-      year={2026},
+    <pre><code>@misc{oberweger2026doeslatentplanningsurvive,
+  title         = {Does Latent Planning Survive Point Clouds? Action-Conditioned JEPA World Models for Geometric Observations and Goals},
+  author        = {Fabio F. Oberweger and Michael Schwingshackl and Markus Murschitz},
+  year          = {2026},
+  eprint        = {2608.29434},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2608.29434},
 }</code></pre>
   </div>
 </section>
--->
 
 <footer class="footer">
   <div class="container">
