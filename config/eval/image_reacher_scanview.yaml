@@ -1,0 +1,60 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel eval for Reacher on the SENSOR'S VIEW ("scanview"): see
+# image_pusht_scanview.yaml. The env is swm/Reacher3D-v0 (as in
+# lidar_reacher.yaml, frame_skip 2 = the dataset's action repeat) with
+# `render_camera: iso`, so the image rows run in the very scene the
+# point-cloud rows run in; the original image eval uses dm_control's reacher.
+
+world:
+  env_name: swm/Reacher3D-v0
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+  # --- env kwargs (== lidar_reacher.yaml) ---
+  frame_skip: 2
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+  render_camera: iso
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+
+seed: 42
+policy: ???
+cache_dir: ${hydra:runtime.cwd}
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  img_size: 224
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/reacher.lance
+  # == lidar_reacher.yaml
+  callables:
+    - method: set_state
+      args:
+        qpos:
+          value: qpos
+        qvel:
+          value: qvel
+    - method: set_target_qpos
+      args:
+        target_qpos:
+          value: goal_qpos
+
+output:
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_reacher_scanview_results.txt

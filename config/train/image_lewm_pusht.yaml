@@ -1,0 +1,71 @@
+# Image LeWM, Push-T: Maes et al.'s pixel world model (ViT-tiny from scratch,
+# SIGReg) trained under THIS repository's point-cloud protocol -- 1 GPU x batch
+# 128, lr 5e-5, 10 epochs (also the budget the LeWM paper reports), the same
+# protocol as point_lewm_pusht.yaml -- so an image row and a point-cloud row
+# differ in the observation only. The released image LeWM checkpoints come
+# with no training recipe; the recipe below is their code's (le-wm /
+# stable-worldmodel lewm.yaml: AdamW 5e-5 / 1e-3, bf16, clip 1.0, SIGReg
+# 0.09 with 17 knots x 1024 projections, 3-frame history, 4-frame windows at
+# frameskip 5) with the epoch count fixed at 10.
+#
+# Dataset: data/image_pusht.yaml names the original h5 image data; for the
+# sensor-view images point the same config at the Lance table, whose pixels
+# column holds them after scripts/data/scanview_from_lance.py:
+#   pixi run train --config-name=image_lewm_pusht run_name=image_lewm_pusht_scanview \
+#       data.dataset.name=$PLWM_DATA_ROOT/pusht.lance
+# Run with: pixi run train --config-name=image_lewm_pusht run_name=image_lewm_pusht
+defaults:
+  - _self_
+  - launcher: local
+  - data: image_pusht
+  - model: image_lewm
+
+output_model_name: image_lewm_pusht
+subdir: ${hydra:job.id}
+
+# Unused by the from-scratch ViT; kept so shared tooling that reads the key
+# keeps working.
+pretrained_ckpt: null
+
+# DataLoader workers: raise this toward the core count of the machine (the
+# paper's runs used 16 on 64-core nodes).
+num_workers: 6
+train_split: 0.9
+seed: 3072
+# Pixel resolution the ViT and the preprocessor agree on. MUST equal the eval
+# config's eval.img_size (224 everywhere here) and the table's stored resolution.
+img_size: 224
+embed_dim: 192
+# 3 frames of history + 1 prediction = the 4-frame window of the released
+# checkpoints (predictor num_frames 3); data.dataset.num_steps follows.
+history_size: 3
+
+trainer:
+  max_epochs: 10
+  devices: 1
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+# True batch 128 on one GPU: SIGReg sees batch statistics, so this is the
+# exact upstream objective (accumulation would not be).
+loader:
+  batch_size: 128
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024

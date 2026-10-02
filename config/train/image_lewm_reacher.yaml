@@ -1,0 +1,49 @@
+# Image LeWM, Reacher. Differs from image_lewm_pusht.yaml ONLY in the dataset
+# and the output name -- READ THAT FILE'S HEADER for the protocol and how to
+# train on the sensor-view images (data.dataset.name=$PLWM_DATA_ROOT/reacher.lance).
+# Run with: pixi run train --config-name=image_lewm_reacher run_name=image_lewm_reacher
+defaults:
+  - _self_
+  - launcher: local
+  - data: image_reacher
+  - model: image_lewm
+
+output_model_name: image_lewm_reacher
+subdir: ${hydra:job.id}
+
+pretrained_ckpt: null
+
+num_workers: 6
+train_split: 0.9
+seed: 3072
+img_size: 224
+embed_dim: 192
+history_size: 3
+
+trainer:
+  max_epochs: 10
+  devices: 1
+  accelerator: gpu
+  precision: bf16
+  gradient_clip_val: 1.0
+
+loader:
+  batch_size: 128
+  num_workers: ${num_workers}
+  persistent_workers: True
+  prefetch_factor: 3
+  pin_memory: True
+
+optimizer:
+  type: AdamW
+  lr: 5e-5
+  weight_decay: 1e-3
+
+num_preds: 1
+
+loss:
+  sigreg:
+    weight: 0.09
+    kwargs:
+      knots: 17
+      num_proj: 1024

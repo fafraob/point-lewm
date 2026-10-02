@@ -1,0 +1,57 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel eval for Two-Room on the SENSOR'S VIEW ("scanview"): see
+# image_pusht_scanview.yaml. The env is swm/TwoRoomLidar-v1 (as in
+# lidar_tworoom.yaml) with `render_camera: iso`; the 2D dynamics are the
+# original ones and the goal marker is not part of the scene.
+
+world:
+  env_name: swm/TwoRoomLidar-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+  # --- env kwargs (== lidar_tworoom.yaml) ---
+  goal_lidar_height: null
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+  render_camera: iso
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+
+seed: 42
+policy: ???
+cache_dir: ${hydra:runtime.cwd}
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  img_size: 224
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/two_room.lance
+  # == lidar_tworoom.yaml (TwoRoomLidarEnv._set_state syncs the mirror)
+  callables:
+    - method: _set_state
+      args:
+        state:
+          value: pos_agent
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_pos_agent
+
+output:
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_tworoom_scanview_results.txt

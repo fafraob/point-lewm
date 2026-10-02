@@ -1,0 +1,71 @@
+defaults:
+  - launcher: local
+  - solver: cem
+  - _self_
+
+# Pixel eval for Push-T on the SENSOR'S VIEW ("scanview"): the image model
+# plans over renders of the MuJoCo mirror from the `iso` camera, the exact
+# pose and field of view of the range sensor, so image and point-cloud rows
+# differ in modality only.
+#
+# THE ENV IS swm/PushTLidar-v1 -- the same env as lidar_pusht.yaml, with
+# `render_camera: iso` so its render() returns the mirror seen from the sensor
+# instead of the 2D pygame image. Dynamics are the original pymunk ones; the
+# goal T is not part of the scene (goal_lidar_height: null), as in the scan.
+# The dataset's pixels column holds the same renders (scripts/data/
+# scanview_from_lance.py), so the goal image is what the live render shows.
+#
+# Everything below `world` is image_pusht.yaml: same Lance table, same start /
+# goal sampling, same planner, so a seed draws the identical windows.
+
+world:
+  env_name: swm/PushTLidar-v1
+  num_envs: ${eval.num_eval}
+  max_episode_steps: ??? # set by eval.py to 2 * eval_budget
+  # --- env kwargs (== lidar_pusht.yaml) ---
+  goal_lidar_height: null
+  iso_azimuth: 45.0
+  iso_elevation: 45.0
+  # render() -> the mirror from the sensor's camera
+  render_camera: iso
+
+dataset:
+  stats: ${eval.dataset_name}
+  keys_to_cache:
+    - action
+
+seed: 42
+# A scanview checkpoint is a training run of your own: run=<folder under
+# logs_root> policy=<config>/weights_final.pt (DINO-WM: cache_dir=<run dir>
+# policy=model_latest.pth).
+policy: ???
+cache_dir: ${hydra:runtime.cwd}
+logs_root: ${oc.env:PLWM_LOGS_ROOT,experiment_logs}
+run: null
+
+# must match training: frameskip=5 (action_block)
+plan_config:
+  horizon: 5
+  receding_horizon: 5
+  action_block: 5
+
+eval:
+  num_eval: 50
+  goal_offset_steps: 25
+  eval_budget: 50
+  max_start_step: null
+  img_size: 224 # the render size and the stored pixels resolution
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/pusht.lance
+  callables:
+    - method: _set_state
+      args:
+        state:
+          value: state
+    - method: _set_goal_state
+      args:
+        goal_state:
+          value: goal_state
+
+output:
+  dir: ${oc.env:PLWM_RESULTS_ROOT,eval_results}
+  filename: image_pusht_scanview_results.txt

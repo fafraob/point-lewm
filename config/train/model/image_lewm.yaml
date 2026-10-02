@@ -1,0 +1,56 @@
+_target_: jepa.JEPA
+
+# Image LeWM: Maes et al.'s pixel stack, trained from scratch -- the model of
+# the released image LeWM checkpoints (their config.json: vit_hf tiny/14 at
+# 224, predictor depth 6 / 16 heads / mlp 2048 over a 3-frame history, action
+# embedder, 192->2048->192 projectors with BatchNorm). Identical to
+# model/image_delta_jepa.yaml minus the action decoder; the anti-collapse term
+# is SIGReg, set in the train config (loss.sigreg), as in model/point_lewm_*.
+#
+# ONE model config serves every environment: the only per-environment quantity
+# is the action width, which train.py fills in from the dataset.
+#
+# Run with: pixi run train --config-name=image_lewm_<env> run_name=image_lewm_<env>
+encoder:
+  _target_: stable_pretraining.backbone.utils.vit_hf
+  size: tiny            # 192-d / 12-layer / 3-head, ~5.5M
+  patch_size: 14        # 224 / 14 = 16x16 = 256 patch tokens + CLS
+  image_size: ${img_size}
+  pretrained: false     # trained end-to-end from scratch, as in LeWM
+  use_mask_token: false
+
+predictor:
+  _target_: module.ARPredictor
+  num_frames: ${history_size}
+  input_dim: ${embed_dim}
+  hidden_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  depth: 6
+  heads: 16
+  mlp_dim: 2048
+  dim_head: 64
+  dropout: 0.1
+  emb_dropout: 0.0
+
+action_encoder:
+  _target_: module.Embedder
+  input_dim: ???        # frameskip * action_dim, set by train.py from the dataset
+  emb_dim: ${embed_dim}
+
+projector:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
+
+pred_proj:
+  _target_: module.MLP
+  input_dim: ${embed_dim}
+  output_dim: ${embed_dim}
+  hidden_dim: 2048
+  norm_fn:
+    _target_: torch.nn.BatchNorm1d
+    _partial_: true
