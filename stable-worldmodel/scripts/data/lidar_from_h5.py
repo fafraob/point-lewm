@@ -32,13 +32,13 @@ import h5py
 import hydra
 import mujoco
 import numpy as np
-import torch
 from loguru import logger as logging
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 import stable_worldmodel  # noqa: F401  (registers swm/ envs)
 from stable_worldmodel.data.formats.lance import LanceWriter
+from stable_worldmodel.envs import replay
 from stable_worldmodel.wrapper import AddRaycastLidarWrapper
 
 
@@ -112,57 +112,45 @@ class OfflineImageLidar(AddRaycastLidarWrapper):
 # ---------------------------------------------------------------------------
 
 
-def is_mirror_env(env) -> bool:
-    """A mirror env keeps 2D dynamics + a MuJoCo shadow scene (``_build_mirror``)."""
-    return hasattr(env.unwrapped, '_build_mirror')
+is_mirror_env = replay.is_mirror_env
+
+
+class _H5Episode:
+    """One episode of an h5 table as the step-indexed mapping ``replay`` reads.
+
+    ``src[col][start + t]`` becomes ``ep[col][t]`` without copying the
+    episode out of the file; only the columns the restore touches are read.
+    """
+
+    def __init__(self, src, start: int, length: int):
+        self._src, self._start, self._len = src, start, length
+
+    def __contains__(self, col):
+        return col in self._src
+
+    def __getitem__(self, col):
+        return self._src[col][self._start : self._start + self._len]
 
 
 def mirror_begin_episode(base, src, start):
-    """Set the per-episode goal and (re)build the mirror; return (model, data)."""
-    if hasattr(base, 'target_position') and 'pos_target' in src:  # TwoRoom
-        base.target_position = torch.as_tensor(
-            np.asarray(src['pos_target'][start]), dtype=torch.float32
-        )
-    if hasattr(base, 'goal_pose') and 'goal_pose' in src:  # PushT
-        base.goal_pose = np.asarray(src['goal_pose'][start], dtype=np.float64)
-    base._build_mirror()
+    """Set the per-episode goal and (re)build the mirror; return (model, data).
+
+    State restore lives in :mod:`stable_worldmodel.envs.replay`, shared with
+    the offline renderers and tests, so every pass over a table restores a
+    frame the same way. (An earlier copy here wrote the PushT block's
+    position before its angle, which pymunk resolves against the body's
+    centre of gravity at its previous rotation; the tables produced by it had
+    the T displaced wherever it turned. ``replay.set_step`` writes angle
+    first.)
+    """
+    # Only the episode's first row is read (goals are fixed per episode).
+    replay.begin_episode(base, _H5Episode(src, start, 1))
     return base.model, base.data
 
 
 def mirror_set_state(base, src, off) -> None:
-    """Set the mirror env's native 2D state for step ``off`` and sync mocaps.
-
-    PushT tables come in two flavours: swm's own collections write
-    ``pos_agent`` / ``block_pose`` columns, while the LeWM expert set stores
-    only the canonical 7-D ``state``
-    (``[agent_xy, block_xy, block_angle, agent_vel]``, the vector the env's
-    ``_set_state`` consumes). Positions are written straight onto the pymunk
-    bodies -- no ``space.step`` -- so the replay reproduces the recorded pose
-    exactly instead of advancing physics a tick.
-    """
-    if hasattr(base, 'agent_position'):  # TwoRoom
-        base.agent_position = torch.as_tensor(
-            np.asarray(src['pos_agent'][off]), dtype=torch.float32
-        )
-        base._sync_agent()
-        return
-
-    if 'pos_agent' in src:  # PushT with explicit pose columns
-        ax, ay = np.asarray(src['pos_agent'][off], dtype=np.float64)
-        bp = np.asarray(src['block_pose'][off], dtype=np.float64)
-        bx, by, ba = float(bp[0]), float(bp[1]), float(bp[2])
-    else:  # PushT from a 7-D `state` column
-        st = np.asarray(src['state'][off], dtype=np.float64)
-        if st.shape[0] < 5:
-            raise RuntimeError(
-                f'PushT state column has {st.shape[0]} dims; expected at '
-                'least 5 ([agent_xy, block_xy, block_angle]).'
-            )
-        ax, ay, bx, by, ba = st[0], st[1], st[2], st[3], st[4]
-    base.agent.position = (float(ax), float(ay))
-    base.block.position = (bx, by)
-    base.block.angle = ba
-    base._sync()
+    """Set the mirror env's native 2D state for row ``off`` and sync mocaps."""
+    replay.set_step(base, _H5Episode(src, off, 1), 0)
 
 
 def check_replay_fidelity(wrapper, model, data, src, offset, tol):

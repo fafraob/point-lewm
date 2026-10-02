@@ -27,6 +27,11 @@ Two cameras are defined for the sensor to ride:
 Exposed as ``self.model`` / ``self.data`` for
 :class:`~stable_worldmodel.wrapper.AddRaycastLidarWrapper` (raw-MuJoCo backend).
 The 2D behavior is untouched; ``render()`` still returns the original pygame RGB.
+``render(camera='iso')`` instead draws the mirror scene from the named camera --
+the view the sensor mounted there has -- and ``render_depth`` gives the matching
+depth image; how the scene is drawn (ground, background, colours, shadows) is a
+:class:`~..scene_render.SceneStyle`. Colour slots: ``block``, ``pusher``,
+``goal``.
 
 The 512-px pymunk arena maps to MuJoCo at ``S`` m/px with a y-flip (pymunk is
 y-up, the RGB image is y-down) so the LiDAR view lines up with the RGB; block
@@ -40,6 +45,7 @@ import numpy as np
 import pymunk
 
 from ..camera_xml import iso_camera_xml, topdown_camera_xml
+from ..scene_render import CameraRenderer, SceneStyle
 from .env import PushT
 
 
@@ -54,6 +60,22 @@ _CAM_Z = 2.5  # top-down camera height (m)
 _ISO_AZ = 45.0  # oblique camera azimuth (deg, CCW from +x)
 _ISO_EL = 45.0  # oblique camera elevation (deg above the ground plane)
 _ISO_FILL = 2.5  # iso camera distance in units of the scene's bounding radius
+
+# How the mirror is drawn when rendered from a camera (the "scanview" images):
+# pygame's palette on a 3D scene -- LightSlateGray T, RoyalBlue pusher -- over
+# a flat rgb(224,224,224) ground, uniform downward light, matte floor, no
+# shadows, pale-blue sky. Geometry is untouched by style, so scans are unchanged.
+DEFAULT_STYLE = SceneStyle(
+    ground='0.8784 0.8784 0.8784',
+    background='0.78 0.86 0.95',
+    shadows=False,
+    light='uniform',
+    floor_matte=True,
+    rgba={
+        'block': '0.467 0.533 0.6 1',
+        'pusher': '0.255 0.412 0.882 1',
+    },
+)
 
 
 def _wx(x: float) -> float:
@@ -73,6 +95,8 @@ class PushTLidarEnv(PushT):
         iso_azimuth: float = _ISO_AZ,
         iso_elevation: float = _ISO_EL,
         iso_distance: float | None = None,
+        style: SceneStyle | dict | None = None,
+        render_camera: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -83,11 +107,17 @@ class PushTLidarEnv(PushT):
         self.iso_distance = (
             None if iso_distance is None else float(iso_distance)
         )
+        self.style = SceneStyle.coerce(style, default=DEFAULT_STYLE)
+        # When set, a plain render() -- what gym wrappers and swm.World call --
+        # returns the mirror seen from this camera instead of the pygame image,
+        # so an image policy can be evaluated on the sensor's view.
+        self.render_camera = render_camera
         self.model = None
         self.data = None
         self._agent_mid = -1
         self._block_mid = -1
         self._goal_mid = -1
+        self._mj_renderer = CameraRenderer()
 
     # -- gym API: run the 2D env, then mirror its state --------------------
     def reset(self, seed=None, options=None):
@@ -146,9 +176,10 @@ class PushTLidarEnv(PushT):
             if isinstance(s, pymunk.Circle):
                 r = s.radius * _S
                 break
+        rgba = self.style.color('pusher', '0.2 0.4 0.85 1')
         return (
             f'<geom name="agent" type="cylinder" pos="0 0 {_H_AGENT / 2:.4f}" '
-            f'size="{r:.4f} {_H_AGENT / 2:.4f}" rgba="0.2 0.4 0.85 1"/>'
+            f'size="{r:.4f} {_H_AGENT / 2:.4f}" rgba="{rgba}"/>'
         )
 
     # -- mirror construction / sync ---------------------------------------
@@ -177,27 +208,35 @@ class PushTLidarEnv(PushT):
     def _goal_body_xml(self) -> str:
         if self.goal_lidar_height is None:
             return ''
-        geoms = self._block_geoms('goal', self.goal_lidar_height, '0.2 0.75 0.3 1')
+        geoms = self._block_geoms(
+            'goal',
+            self.goal_lidar_height,
+            self.style.color('goal', '0.2 0.75 0.3 1'),
+        )
         return f'<body name="goal" mocap="true" pos="0 0 0">\n      {geoms}\n    </body>'
 
     def _build_mirror(self) -> None:
         arena = self.window_size * _S
-        block_geoms = self._block_geoms('block', _H_BLOCK, '0.45 0.5 0.6 1')
+        block_geoms = self._block_geoms(
+            'block', _H_BLOCK, self.style.color('block', '0.45 0.5 0.6 1')
+        )
         goal_body = self._goal_body_xml()
         cameras = self._camera_xml()
+        assets = self.style.asset_xml(
+            checker_rgb1='0.9 0.9 0.9', checker_rgb2='0.8 0.8 0.82',
+            texrepeat='8 8',
+        )
         xml = f"""
 <mujoco model="pusht_mirror">
   <option timestep="0.02"><flag contact="disable"/></option>
-  <visual><global offwidth="224" offheight="224"/></visual>
+  <visual><global offwidth="224" offheight="224"/>{self.style.visual_xml()}</visual>
   <asset>
-    <texture name="grid" type="2d" builtin="checker" rgb1="0.9 0.9 0.9"
-             rgb2="0.8 0.8 0.82" width="256" height="256"/>
-    <material name="grid" texture="grid" texrepeat="8 8"/>
+    {assets}
   </asset>
   <worldbody>
-    <light pos="0 0 3" dir="0 0 -1"/>
+    {self.style.light_xml(pos='0 0 3', dir='0 0 -1')}
     <geom name="ground" type="plane" size="{arena:.3f} {arena:.3f} 0.1"
-          material="grid"/>
+          {self.style.ground_attr()}/>
     {cameras}
     <body name="block" mocap="true" pos="0 0 0">
       {block_geoms}
@@ -250,3 +289,42 @@ class PushTLidarEnv(PushT):
             np.sin(a / 2),
         ]
         mujoco.mj_forward(self.model, self.data)
+
+    # -- rendering ---------------------------------------------------------
+    def render(self, camera: str | None = None, width=None, height=None):
+        """The pygame image (no ``camera``), or the mirror scene from ``camera``.
+
+        The default keeps every existing caller -- and the stored ``pixels``
+        of the datasets -- unchanged, unless the env was built with
+        ``render_camera``. With a camera name the MuJoCo mirror is drawn from
+        it at ``render_size`` square (or ``width`` x ``height``), so
+        ``render(camera='iso')`` is what a sensor mounted on ``iso`` sees.
+        """
+        camera = camera or self.render_camera
+        if camera is None:
+            return super().render()
+        # The base env renders on its own schedule (e.g. the goal image inside
+        # reset(), before this class has built the mirror, with the block
+        # moved to the goal pose): build if needed and sync to the pymunk
+        # state right now, so the picture is of the state being rendered.
+        if self.model is None:
+            self._build_mirror()
+        self._sync()
+        return self._mj_renderer.render(
+            self.model,
+            self.data,
+            camera,
+            height=int(height or self.render_size),
+            width=int(width or self.render_size),
+            shadows=self.style.shadows,
+        )
+
+    def render_depth(self, camera: str, height: int, width: int):
+        """Depth (metres along the camera axis) of the mirror from ``camera``."""
+        return self._mj_renderer.depth(
+            self.model, self.data, camera, height=height, width=width
+        )
+
+    def close(self):
+        self._mj_renderer.close()
+        super().close()

@@ -24,6 +24,12 @@ foreshortened). ``topdown`` is left exactly as it was, since it also defines
 what ``render()`` returns. There is no goal/target object in this scene, so
 unlike the TwoRoom / PushT mirrors there is nothing to exclude from the cloud.
 
+How the scene is drawn (floor, background, light, colours) is a
+:class:`~.scene_render.SceneStyle` passed as ``style``; the default is the
+scene as it always was. Colour slots: ``post``, ``link1``, ``link2``,
+``finger``. Style never touches geometry, so a scan is the same under any
+style.
+
 The arm is reacher-like: two hinge joints about the vertical axis, driven by two
 motors. Links are cuboids (swap ``type="box"`` for ``type="capsule"`` in the XML
 for capsules).
@@ -38,6 +44,7 @@ import mujoco
 import numpy as np
 
 from .camera_xml import iso_camera_xml
+from .scene_render import SceneStyle
 
 
 # A 3D re-skin of the dm_control "two-link planar reacher": same dynamics
@@ -95,40 +102,59 @@ _ISO_AZ = 45.0  # oblique camera azimuth (deg, CCW from +x)
 _ISO_EL = 45.0  # oblique camera elevation (deg above the ground plane)
 _ISO_FILL = 2.5  # iso camera distance in units of the scene's bounding radius
 
+# How the scene is drawn when rendered from a camera (the "scanview" images):
+# the dm_control reacher's look, read off its frames. A 2x2 checker in its two
+# blues with the arm's base at the corner of the four squares, the links in its
+# pale yellow, the fingertip in its orange, the base in its light cyan; a
+# uniform downward light, matte floor, no shadows, pale-blue sky. Geometry is
+# untouched by any of this, so scans are the same under any style.
+DEFAULT_STYLE = SceneStyle(
+    ground='checker',
+    checker=('0.145 0.286 0.424', '0.306 0.459 0.616'),
+    background='0.78 0.86 0.95',
+    shadows=False,
+    light='uniform',
+    floor_matte=True,
+    rgba={
+        'post': '0.773 1.0 0.992 1',  # c5fffd
+        'link1': '1.0 0.973 0.631 1',  # fff8a1
+        'link2': '1.0 0.973 0.631 1',
+        'finger': '1.0 0.714 0.408 1',  # ffb668
+    },
+)
+
 _XML_TEMPLATE = """
 <mujoco model="reacher3d">
   <option timestep="0.02"><flag contact="disable"/></option>
-  <visual><global offwidth="640" offheight="640"/></visual>
+  <visual><global offwidth="640" offheight="640"/>{visual}</visual>
   <asset>
-    <texture name="grid" type="2d" builtin="checker" rgb1="0.28 0.35 0.28"
-             rgb2="0.22 0.28 0.22" width="256" height="256"/>
-    <material name="grid" texture="grid" texrepeat="6 6" reflectance="0.1"/>
+    {assets}
   </asset>
   <default>
     <joint type="hinge" axis="0 0 1" damping="0.01"/>
     <motor gear="0.05" ctrlrange="-1 1" ctrllimited="true"/>
   </default>
   <worldbody>
-    <light pos="0 0 2" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
-    <geom name="ground" type="plane" size="1 1 0.1" material="grid"/>
+    {light}
+    <geom name="ground" type="plane" size="1 1 0.1" {ground}/>
     <camera name="topdown" pos="0 0 0.75" xyaxes="1 0 0 0 1 0"/>
     {iso_camera}
     <geom name="post" type="cylinder" fromto="0 0 0 0 0 0.05" size="0.03"
-          rgba="0.30 0.30 0.32 1"/>
+          rgba="{post_rgba}"/>
     <body name="arm" pos="0 0 0.05">
       <joint name="shoulder"/>
       <inertial pos="0.06 0.0 0.0" quat="0.7071067811865476 0.0 -0.7071067811865475 0.0" mass="0.04188790204786391" diaginertia="6.33135639453463e-05 6.33135639453463e-05 2.0525072003453316e-06"/>
       <geom name="link1" type="box" pos="0.06 0 0" size="0.06 0.02 0.03"
-            mass="0.042" rgba="0.85 0.25 0.20 1"/>
+            mass="0.042" rgba="{link1_rgba}"/>
       <body name="hand" pos="0.12 0 0">
         <joint name="wrist" limited="true" range="-160 160"/>
         <inertial pos="0.05 0.0 0.0" quat="0.7071067811865476 0.0 -0.7071067811865475 0.0" mass="0.03560471674068432" diaginertia="3.9175660390264734e-05 3.9175660390264734e-05 1.7383479349863525e-06"/>
         <geom name="link2" type="box" pos="0.06 0 0" size="0.06 0.018 0.03"
-              mass="0.036" rgba="0.20 0.35 0.85 1"/>
+              mass="0.036" rgba="{link2_rgba}"/>
         <body name="finger" pos="0.12 0 0">
           <inertial pos="0.0 0.0 0.0" quat="1.0 0.0 0.0 0.0" mass="0.004188790204786391" diaginertia="1.6755160819145565e-07 1.6755160819145565e-07 1.6755160819145565e-07"/>
           <geom name="finger" type="box" size="0.022 0.022 0.03" mass="0.01"
-                rgba="0.15 0.70 0.35 1"/>
+                rgba="{finger_rgba}"/>
         </body>
       </body>
     </body>
@@ -156,8 +182,15 @@ class Reacher3DEnv(gym.Env):
         iso_elevation: float = _ISO_EL,
         iso_distance: float | None = None,
         qpos_threshold: float = _QPOS_THRESHOLD,
+        style: SceneStyle | dict | None = None,
+        render_camera: str | None = None,
         **kwargs,
     ) -> None:
+        self.style = SceneStyle.coerce(style, default=DEFAULT_STYLE)
+        # When set, a plain render() -- what gym wrappers and swm.World call --
+        # uses this camera instead of 'topdown', so an image policy can be
+        # evaluated on the sensor's view.
+        self.render_camera = render_camera
         xml = _XML_TEMPLATE.format(
             iso_camera=iso_camera_xml(
                 radius=float(np.hypot(_VIEW_R, _LINK_TOP)),
@@ -165,7 +198,24 @@ class Reacher3DEnv(gym.Env):
                 elevation=iso_elevation,
                 distance=iso_distance,
                 fill=_ISO_FILL,
-            )
+            ),
+            visual=self.style.visual_xml(),
+            # One checker repeat over the 2 m plane = the original's 2x2
+            # squares, boundary through the origin where the arm is mounted.
+            assets=self.style.asset_xml(
+                checker_rgb1='0.28 0.35 0.28',
+                checker_rgb2='0.22 0.28 0.22',
+                texrepeat='1 1',
+                material_attrs='reflectance="0.1"',
+            ),
+            light=self.style.light_xml(
+                pos='0 0 2', dir='0 0 -1', attrs='diffuse="0.8 0.8 0.8"'
+            ),
+            ground=self.style.ground_attr(),
+            post_rgba=self.style.color('post', '0.30 0.30 0.32 1'),
+            link1_rgba=self.style.color('link1', '0.85 0.25 0.20 1'),
+            link2_rgba=self.style.color('link2', '0.20 0.35 0.85 1'),
+            finger_rgba=self.style.color('finger', '0.15 0.70 0.35 1'),
         )
         self.model = mujoco.MjModel.from_xml_string(xml)
         self.data = mujoco.MjData(self.model)
@@ -228,6 +278,12 @@ class Reacher3DEnv(gym.Env):
             if distance < self.qpos_threshold:
                 terminated = True
                 break
+        # mj_step integrates qpos AFTER computing the kinematics, so the body
+        # and geom poses in `data` are those of the previous substep. Anything
+        # that reads the scene now -- the LiDAR raycast, a render -- would see
+        # the arm one substep behind the state it reports; bring them in line
+        # (dm_control's Physics.step does the same via its step2/step1 order).
+        mujoco.mj_forward(self.model, self.data)
         return self._obs(), 0.0, terminated, False, {}
 
     def set_state(self, qpos, qvel=None):
@@ -288,7 +344,22 @@ class Reacher3DEnv(gym.Env):
         """
         return self._closest_goal
 
-    def render(self, width=None, height=None, camera_id=None):
+    def render(
+        self, width=None, height=None, camera_id=None, camera=None, shadows=None
+    ):
+        """RGB from ``topdown`` by default, or from ``camera_id`` / ``camera``.
+
+        ``camera`` is a camera *name* (``'iso'`` is the sensor's view) and wins
+        over ``camera_id``; it is the keyword the LiDAR wrapper and the offline
+        renderers use, so all three LiDAR scenes answer ``render(camera=...)``.
+        ``shadows`` defaults to the style's setting.
+        """
+        if camera is None and camera_id is None:
+            camera = self.render_camera
+        if camera is not None:
+            camera_id = int(self.model.camera(camera).id)
+        if shadows is None:
+            shadows = self.style.shadows
         h = int(height or self.height)
         w = int(width or self.width)
         # A MuJoCo GL context belongs to the thread that made it current:
@@ -311,7 +382,25 @@ class Reacher3DEnv(gym.Env):
         self._renderer.update_scene(
             self.data, camera=self.camera_id if camera_id is None else camera_id
         )
+        self._renderer.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = int(
+            bool(shadows)
+        )
         return self._renderer.render()
+
+    def render_depth(self, camera: str, height: int, width: int):
+        """Depth (metres along the camera axis) from the named camera.
+
+        A separate renderer with the depth pass enabled; sized as asked, so a
+        ``match_camera_fov`` scan's ``h_res x v_res`` grid can be compared
+        pixel for pixel with the scan it was cast from.
+        """
+        r = mujoco.Renderer(self.model, int(height), int(width))
+        try:
+            r.enable_depth_rendering()
+            r.update_scene(self.data, camera=int(self.model.camera(camera).id))
+            return np.array(r.render(), dtype=np.float32)
+        finally:
+            r.close()
 
     def close(self):
         if self._renderer is not None:

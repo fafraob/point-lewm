@@ -30,7 +30,11 @@ The scene is exposed as ``self.model`` / ``self.data`` so
 :class:`~stable_worldmodel.wrapper.AddRaycastLidarWrapper` (raw-MuJoCo backend)
 raycasts it from either camera. The 2D behavior is 100% unchanged; the MuJoCo
 model is only a geometry proxy for the sensor, and ``render()`` still returns
-the original 2D RGB image.
+the original 2D RGB image. ``render(camera='iso')`` instead draws the mirror
+scene from the named camera -- the view the sensor mounted there has -- and
+``render_depth`` gives the matching depth image; how the scene is drawn (ground,
+background, colours, shadows) is a :class:`~..scene_render.SceneStyle`. Colour
+slots: ``agent``, ``border``, ``wall``, ``goal``.
 
 Pixel -> world mapping: ``world = (px - 112) * S`` for x, ``(112 - py) * S`` for
 y (image y-down -> world y-up), z in ``[0, wall_h]``. Walls are taller than the
@@ -43,6 +47,7 @@ import mujoco
 import numpy as np
 
 from ..camera_xml import iso_camera_xml, topdown_camera_xml
+from ..scene_render import CameraRenderer, SceneStyle
 from .env import TwoRoomEnv
 
 
@@ -56,6 +61,23 @@ _CAM_Z = 2.5  # top-down camera height (m)
 _ISO_AZ = 45.0  # oblique camera azimuth (deg, CCW from +x)
 _ISO_EL = 45.0  # oblique camera elevation (deg above the ground plane)
 _ISO_FILL = 2.5  # iso camera distance in units of the scene's bounding radius
+
+# How the mirror is drawn when rendered from a camera (the "scanview" images):
+# the 2D env's palette on a 3D scene -- black walls, red agent -- over a flat
+# rgb(224,224,224) ground, uniform downward light, matte floor, no shadows,
+# pale-blue sky. Geometry is untouched by style, so scans are unchanged.
+DEFAULT_STYLE = SceneStyle(
+    ground='0.8784 0.8784 0.8784',
+    background='0.78 0.86 0.95',
+    shadows=False,
+    light='uniform',
+    floor_matte=True,
+    rgba={
+        'agent': '0.95 0.1 0.1 1',
+        'border': '0.05 0.05 0.05 1',
+        'wall': '0.05 0.05 0.05 1',
+    },
+)
 
 
 def _px2wx(px: float) -> float:
@@ -88,6 +110,8 @@ class TwoRoomLidarEnv(TwoRoomEnv):
         iso_azimuth: float = _ISO_AZ,
         iso_elevation: float = _ISO_EL,
         iso_distance: float | None = None,
+        style: SceneStyle | dict | None = None,
+        render_camera: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -98,10 +122,16 @@ class TwoRoomLidarEnv(TwoRoomEnv):
         self.iso_distance = (
             None if iso_distance is None else float(iso_distance)
         )
+        self.style = SceneStyle.coerce(style, default=DEFAULT_STYLE)
+        # When set, a plain render() -- what gym wrappers and swm.World call --
+        # returns the mirror seen from this camera instead of the 2D image, so
+        # an image policy can be evaluated on the sensor's view.
+        self.render_camera = render_camera
         self.model = None
         self.data = None
         self._agent_mocap_id = -1
         self._goal_mocap_id = -1
+        self._mj_renderer = CameraRenderer()
 
     # -- gym API: run the 2D env, then mirror its state --------------------
     def reset(self, seed=None, options=None):
@@ -139,7 +169,7 @@ class TwoRoomLidarEnv(TwoRoomEnv):
         half = self.wall_thickness // 2
         g = []
         # Border frame (four bars around the play area).
-        c = '0.25 0.25 0.28 1'
+        c = self.style.color('border', '0.25 0.25 0.28 1')
         t = bs
         g.append(self._box('border_l', bs - t, bs, bs, hi, _WALL_H, c))
         g.append(self._box('border_r', hi, hi + t, bs, hi, _WALL_H, c))
@@ -154,7 +184,7 @@ class TwoRoomLidarEnv(TwoRoomEnv):
             )
             for i in range(self.num_doors)
         ]
-        wcol = '0.15 0.15 0.18 1'
+        wcol = self.style.color('wall', '0.15 0.15 0.18 1')
         for k, (a, b) in enumerate(_solid_intervals(bs, hi, gaps)):
             if self.wall_axis == 1:  # vertical wall at x=center, doors along y
                 g.append(
@@ -204,7 +234,7 @@ class TwoRoomLidarEnv(TwoRoomEnv):
         return (
             f'<body name="goal" mocap="true" pos="0 0 {zh:.4f}">'
             f'<geom name="goal" type="cylinder" size="{r:.4f} {zh:.4f}"'
-            f' rgba="0.2 0.75 0.3 1"/></body>'
+            f' rgba="{self.style.color("goal", "0.2 0.75 0.3 1")}"/></body>'
         )
 
     def _build_mirror(self) -> None:
@@ -213,24 +243,27 @@ class TwoRoomLidarEnv(TwoRoomEnv):
         walls = '\n    '.join(self._wall_geoms())
         goal_body = self._goal_body_xml()
         cameras = self._camera_xml()
+        assets = self.style.asset_xml(
+            checker_rgb1='0.9 0.9 0.9', checker_rgb2='0.8 0.8 0.82',
+            texrepeat='8 8',
+        )
+        agent_rgba = self.style.color('agent', '0.85 0.2 0.2 1')
         xml = f"""
 <mujoco model="two_room_mirror">
   <option timestep="0.02"><flag contact="disable"/></option>
-  <visual><global offwidth="224" offheight="224"/></visual>
+  <visual><global offwidth="224" offheight="224"/>{self.style.visual_xml()}</visual>
   <asset>
-    <texture name="grid" type="2d" builtin="checker" rgb1="0.9 0.9 0.9"
-             rgb2="0.8 0.8 0.82" width="256" height="256"/>
-    <material name="grid" texture="grid" texrepeat="8 8"/>
+    {assets}
   </asset>
   <worldbody>
-    <light pos="0 0 3" dir="0 0 -1"/>
+    {self.style.light_xml(pos='0 0 3', dir='0 0 -1')}
     <geom name="ground" type="plane" size="{arena:.3f} {arena:.3f} 0.1"
-          material="grid"/>
+          {self.style.ground_attr()}/>
     {cameras}
     {walls}
     <body name="agent" mocap="true" pos="0 0 {_AGENT_H / 2:.4f}">
       <geom name="agent" type="cylinder" size="{agent_r * _S:.4f} {_AGENT_H / 2:.4f}"
-            rgba="0.85 0.2 0.2 1"/>
+            rgba="{agent_rgba}"/>
     </body>
     {goal_body}
   </worldbody>
@@ -267,3 +300,41 @@ class TwoRoomLidarEnv(TwoRoomEnv):
             _AGENT_H / 2,
         ]
         mujoco.mj_forward(self.model, self.data)
+
+    # -- rendering ---------------------------------------------------------
+    def render(self, camera: str | None = None, width=None, height=None):
+        """The 2D image (no ``camera``), or the mirror scene from ``camera``.
+
+        The default keeps every existing caller -- and the stored ``pixels``
+        of the datasets -- unchanged, unless the env was built with
+        ``render_camera``. With a camera name the MuJoCo mirror is drawn from
+        it at ``IMG_SIZE`` square (or ``width`` x ``height``), so
+        ``render(camera='iso')`` is what a sensor mounted on ``iso`` sees.
+        """
+        camera = camera or self.render_camera
+        if camera is None:
+            return super().render()
+        # Build on demand and sync to the 2D state right now, so a render
+        # requested by the base env (outside step/reset/_set_state) shows the
+        # state being rendered.
+        if self.model is None:
+            self._build_mirror()
+        self._sync_agent()
+        return self._mj_renderer.render(
+            self.model,
+            self.data,
+            camera,
+            height=int(height or self.IMG_SIZE),
+            width=int(width or self.IMG_SIZE),
+            shadows=self.style.shadows,
+        )
+
+    def render_depth(self, camera: str, height: int, width: int):
+        """Depth (metres along the camera axis) of the mirror from ``camera``."""
+        return self._mj_renderer.depth(
+            self.model, self.data, camera, height=height, width=width
+        )
+
+    def close(self):
+        self._mj_renderer.close()
+        super().close()
