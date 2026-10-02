@@ -269,8 +269,18 @@ def load_swm_h5_slice_train_val(
     with a fixed seed (upstream's ``random_split_traj`` convention).
 
     Writes the normalization stats to ``stats_path`` (default
-    ``./swm_h5_norm_stats.json`` = the Hydra run folder) for eval / publishing."""
+    ``./swm_h5_norm_stats.json`` = the Hydra run folder) for eval / publishing.
+
+    A ``.lance`` table (the sensor-view images only exist there) is served by
+    :mod:`dinowm_swm.lance_dset` with the same contract."""
     data_path = str(data_path)
+    if data_path.rstrip("/").endswith(".lance"):
+        from .lance_dset import load_swm_lance_slice_train_val
+
+        return load_swm_lance_slice_train_val(
+            transform, data_path, split_ratio, split_seed, normalize_action, num_hist, num_pred,
+            frameskip, action_key, proprio_key, state_key, stats_path, n_rollout,
+        )
     stats = compute_norm_stats(data_path, action_key, proprio_key, state_key)
     stats_path = Path(stats_path or STATS_FILENAME)
     if not stats_path.exists():
