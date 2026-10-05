@@ -15,6 +15,7 @@ when ``data_path`` ends in ``.lance``.
 import io
 import json
 import os
+import sys
 from pathlib import Path
 
 import lance
@@ -33,6 +34,21 @@ from datasets.traj_dset import TrajDataset  # noqa: E402  (vendored dino_wm)
 def _column(ds, name, dtype=np.float32):
     col = ds.to_table(columns=[name])[name]
     return np.asarray(col.to_pylist(), dtype=dtype)
+
+
+def _fork_safe_workers():
+    """Lance runs a Tokio runtime in whichever process opens a table. This
+    process opens one (episode index, norm stats, the trainer's plotting
+    sample) and the vendored trainer builds its DataLoaders with the default
+    start method, so ``fork``ed workers would inherit a half-initialised
+    runtime and segfault or deadlock. Use ``forkserver`` instead, as
+    ``stable_worldmodel.data.formats.lance`` does: every worker then opens the
+    table afresh after a clean fork."""
+    import multiprocessing as mp
+
+    if sys.platform == "linux" and mp.get_start_method(allow_none=True) in (None, "fork"):
+        target = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        mp.set_start_method(target, force=True)
 
 
 def compute_norm_stats_lance(path, action_key="action", proprio_key=None, state_key=None):
@@ -67,6 +83,7 @@ class SWMLanceTrajDataset(TrajDataset):
         normalize_action=True,
         stats=None,
     ):
+        _fork_safe_workers()
         self.data_path = str(data_path)
         self.transform = transform
         self.action_key, self.proprio_key, self.state_key = action_key, proprio_key, state_key
@@ -129,6 +146,12 @@ class SWMLanceTrajDataset(TrajDataset):
             self._ds = lance.dataset(self.data_path)
             self._ds_pid = os.getpid()
         return self._ds
+
+    def __getstate__(self):
+        # workers (forkserver/spawn) receive a pickle: never ship an open handle
+        state = self.__dict__.copy()
+        state["_ds"], state["_ds_pid"] = None, None
+        return state
 
     # -- TrajDataset contract ----------------------------------------------
     def __len__(self):
