@@ -13,8 +13,9 @@
 # and point-cloud Two-Room arms train on identical episodes at an identical
 # optimizer budget.
 #
-# config/eval/image_tworoom.yaml plans on two_room.lance, whose `pixels` column
-# is this file's image data copied verbatim by lidar_from_h5.py.
+# config/eval/image_tworoom.yaml plans on this file as well. Since dataset
+# version 2 the `pixels` column of two_room.lance holds sensor-view renders
+# instead of these images (docs/data.md).
 #
 # Loads pixels + action only: the JEPA reads exactly those two columns
 # (jepa.encode), so `proprio` would cost IO and a z-score pass for nothing.

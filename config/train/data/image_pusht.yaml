@@ -9,8 +9,9 @@
 # exactly what pusht.lance (2,336,736 frames, 18,685 episodes) predicts under
 # the same windowing, so this file and the LiDAR table hold the same episodes.
 #
-# config/eval/image_pusht.yaml plans on pusht.lance, whose `pixels` column is
-# this file's image data copied verbatim by lidar_from_h5.py.
+# config/eval/image_pusht.yaml plans on this file as well. Since dataset
+# version 2 the `pixels` column of pusht.lance holds sensor-view renders
+# instead of these images (docs/data.md).
 #
 # SIZE: the long table on the image side too. Delta-JEPA's loss is per-sample,
 # so this is the arm that can use both GPUs to halve wall time --

@@ -37,9 +37,9 @@ extend with a simulated range sensor, point-cloud encoders and the target-to-lat
 
 | Environment | Point-cloud dataset | Checkpoints (all models) |
 |---|---|---|
-| Two-Room | [`fafraob/point-cloud-tworoom`](https://huggingface.co/datasets/fafraob/point-cloud-tworoom) (0.8 GB) | [`fafraob/point-cloud-tworoom`](https://huggingface.co/fafraob/point-cloud-tworoom) |
-| Reacher | [`fafraob/point-cloud-reacher`](https://huggingface.co/datasets/fafraob/point-cloud-reacher) (7.1 GB) | [`fafraob/point-cloud-reacher`](https://huggingface.co/fafraob/point-cloud-reacher) |
-| Push-T | [`fafraob/point-cloud-pusht`](https://huggingface.co/datasets/fafraob/point-cloud-pusht) (4.6 GB) | [`fafraob/point-cloud-pusht`](https://huggingface.co/fafraob/point-cloud-pusht) |
+| Two-Room | [`fafraob/point-cloud-tworoom`](https://huggingface.co/datasets/fafraob/point-cloud-tworoom) (0.6 GB) | [`fafraob/point-cloud-tworoom`](https://huggingface.co/fafraob/point-cloud-tworoom) |
+| Reacher | [`fafraob/point-cloud-reacher`](https://huggingface.co/datasets/fafraob/point-cloud-reacher) (7.7 GB) | [`fafraob/point-cloud-reacher`](https://huggingface.co/fafraob/point-cloud-reacher) |
+| Push-T | [`fafraob/point-cloud-pusht`](https://huggingface.co/datasets/fafraob/point-cloud-pusht) (2.6 GB) | [`fafraob/point-cloud-pusht`](https://huggingface.co/fafraob/point-cloud-pusht) |
 | OGB-Cube | [`fafraob/point-cloud-ogb-cube`](https://huggingface.co/datasets/fafraob/point-cloud-ogb-cube) (43 GB) | [`fafraob/point-cloud-ogb-cube`](https://huggingface.co/fafraob/point-cloud-ogb-cube) |
 
 Each checkpoint repository holds one folder per model:
@@ -56,6 +56,21 @@ Each checkpoint repository holds one folder per model:
 The image LeWM checkpoints of Maes et al. are evaluated unchanged from
 [their release](https://huggingface.co/collections/quentinll/lewm), and Vox-WM (a parameter-free
 voxel-statistics encoder) is trained from its config; neither is re-hosted here.
+
+## Changes since the paper release
+
+- **Datasets, version 2 (October 2026).** The `pixels` column of the Two-Room, Reacher and Push-T
+  tables now holds the sensor's own view (a render from the range sensor's camera pose) instead of
+  the original scene-camera image, and the Push-T scans were recast after a fix in the conversion's
+  state replay: the T block had been restored with its position before its angle, which displaced
+  it in the scans wherever it is rotated (images, states and actions were unaffected). OGB-Cube is
+  unchanged. The released point-cloud checkpoints were trained on version 1, which stays on the Hub
+  under the revision `v1`; the paper's numbers and `results/` belong to it.
+  [`docs/data.md`](docs/data.md#versions) lists the differences.
+- **Code.** The Reacher environment refreshes its kinematics after every step (live scans were one
+  physics substep behind), the image evaluation configs read the original `.h5` image files, and
+  the tooling of the sensor-view image experiments is included
+  ([`docs/training.md`](docs/training.md)); their checkpoints will follow.
 
 ## Installation
 
@@ -127,8 +142,9 @@ pixi run python eval.py       --config-name=image_cube seed=42 policy=image_lewm
 pixi run python eval_lidar.py --config-name=lidar_cube seed=42 policy=random                            # random baseline
 ```
 
-The image models plan on the same dataset (its `pixels` column is the original image data), so all
-rows see the identical windows. Two of them need one more download: Utonia-WM the frozen Utonia
+The image models plan on the original image data (OGB-Cube: the table's own `pixels`; the other
+three environments: the `.h5` files, see [`docs/data.md`](docs/data.md)), so all rows see the
+identical windows. Two of them need one more download: Utonia-WM the frozen Utonia
 backbone (`pixi run download-checkpoints --utonia`, CC-BY-NC-4.0), and the image LeWM baseline the
 checkpoints of Maes et al. (`pixi run download-checkpoints --image-lewm`). DINO-WM fetches DINOv2
 through `torch.hub` on first use.

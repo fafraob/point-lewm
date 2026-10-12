@@ -26,8 +26,9 @@ downloaded (`pixi run download-checkpoints`) and the datasets in place (`pixi ru
 Every evaluation is closed-loop receding-horizon CEM planning (300 samples, 30 iterations, planning
 horizon 5 steps of frameskip 5) toward a goal taken 25 steps ahead in a recorded expert trajectory,
 with a budget of 50 environment steps and 50 episodes per seed. Point-cloud models observe live
-scans cast by the same sensor that generated the training data; the image models plan on the same
-datasets, whose `pixels` column is the original image data, so every model sees the identical
+scans cast by the same sensor that generated the training data; the image models plan on the
+original image files (`.h5`), which hold the same episodes in the same order as the point-cloud
+tables and go through the same positional window sampler, so every model sees the identical
 start-goal windows.
 
 One evaluation of one seed:

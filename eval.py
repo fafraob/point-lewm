@@ -14,9 +14,9 @@ from sklearn import preprocessing
 from torchvision.transforms import v2 as transforms
 import stable_worldmodel as swm
 
-# Lance datasets have no episode_idx/step_idx columns and live in per-run
-# folders under experiment_logs/ -- reuse the lidar eval's positional episode
-# sampling and run-dir resolution instead of duplicating them here.
+# Reuse the lidar eval's positional episode sampling (so every file that holds
+# the same episodes draws the same windows) and its run-dir resolution instead
+# of duplicating them here.
 from eval_lidar import load_fixed_stats, resolve_run_dir, sample_eval_starts, set_fixed_stats
 
 def img_transform(cfg):
@@ -31,22 +31,11 @@ def img_transform(cfg):
     return transform
 
 
-def get_episodes_length(dataset, episodes):
-    col_name = "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
-
-    episode_idx = dataset.get_col_data(col_name)
-    step_idx = dataset.get_col_data("step_idx")
-    lengths = []
-    for ep_id in episodes:
-        lengths.append(np.max(step_idx[episode_idx == ep_id]) + 1)
-    return np.array(lengths)
-
-
 def get_dataset(cfg, dataset_name):
     # A .lance/.h5 path goes through the format-detecting swm.data.load_dataset.
     # A bare name falls back to the HDF5 cache lookup, which needs the optional
-    # hdf5 extra (swm.data.HDF5Dataset). Every shipped eval config passes a
-    # .lance path.
+    # hdf5 extra (swm.data.HDF5Dataset). The shipped image configs pass the
+    # .h5 image file (Two-Room, Reacher, Push-T) or the .lance table (OGB-Cube).
     if str(dataset_name).endswith((".lance", ".h5")):
         return swm.data.load_dataset(dataset_name)
     dataset_path = Path(cfg.cache_dir or swm.data.utils.get_cache_dir())
@@ -141,50 +130,20 @@ def run(cfg: DictConfig):
     else:
         results_path = Path(__file__).parent
 
-    # sample the episodes and the starting indices
-    if "step_idx" in dataset.column_names:
-        col_name = "episode_idx" if "episode_idx" in dataset.column_names else "ep_idx"
-        ep_indices, _ = np.unique(stats_dataset.get_col_data(col_name), return_index=True)
-        episode_len = get_episodes_length(dataset, ep_indices)
-        max_start_idx = episode_len - cfg.eval.goal_offset_steps - 1
-        max_start_idx_dict = {ep_id: max_start_idx[i] for i, ep_id in enumerate(ep_indices)}
-        # Map each dataset row’s episode_idx to its max_start_idx
-        max_start_per_row = np.array(
-            [max_start_idx_dict[ep_id] for ep_id in dataset.get_col_data(col_name)]
-        )
-
-        # remove all the lines of dataset for which dataset['step_idx'] > max_start_per_row
-        valid_mask = dataset.get_col_data("step_idx") <= max_start_per_row
-        valid_indices = np.nonzero(valid_mask)[0]
-        print(valid_mask.sum(), "valid starting points found for evaluation.")
-
-        g = np.random.default_rng(cfg.seed)
-        random_episode_indices = g.choice(
-            len(valid_indices) - 1, size=cfg.eval.num_eval, replace=False
-        )
-
-        # sort increasingly to avoid issues with HDF5Dataset indexing
-        random_episode_indices = np.sort(valid_indices[random_episode_indices])
-
-        print(random_episode_indices)
-
-        eval_episodes = dataset.get_row_data(random_episode_indices)[col_name]
-        eval_start_idx = dataset.get_row_data(random_episode_indices)["step_idx"]
-
-        if len(eval_episodes) < cfg.eval.num_eval:
-            raise ValueError("Not enough episodes with sufficient length for evaluation.")
-    else:
-        # Lance reader: no episode_idx/step_idx columns -- episodes are
-        # positional indices into dataset.lengths (same as the lidar eval).
-        eval_episodes, eval_start_idx = sample_eval_starts(
-            dataset,
-            cfg.eval.num_eval,
-            cfg.eval.goal_offset_steps,
-            cfg.seed,
-            max_start_step=cfg.eval.get("max_start_step"),
-            min_goal_displacement=cfg.eval.get("min_goal_displacement"),
-        )
-        print("episodes:", eval_episodes, "start steps:", eval_start_idx)
+    # Sample the episodes and the starting indices with the sampler of
+    # eval_lidar.py: positional over dataset.lengths, so a seed draws the
+    # identical (episode, start_step) windows from every file that holds the
+    # same episodes in the same order -- the .h5 image files the image configs
+    # plan on and the .lance point-cloud tables of the lidar configs.
+    eval_episodes, eval_start_idx = sample_eval_starts(
+        dataset,
+        cfg.eval.num_eval,
+        cfg.eval.goal_offset_steps,
+        cfg.seed,
+        max_start_step=cfg.eval.get("max_start_step"),
+        min_goal_displacement=cfg.eval.get("min_goal_displacement"),
+    )
+    print("episodes:", eval_episodes, "start steps:", eval_start_idx)
 
     world.set_policy(policy)
 

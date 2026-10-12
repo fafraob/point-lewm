@@ -14,16 +14,17 @@ defaults:
 # to set_target_qpos; see lidar_reacher.yaml), and both modalities share the
 # (episode, start) windows, so their success rates are directly comparable.
 #
-# SEQUENCE-MATCHED with the lidar eval: this config evaluates on the SAME
-# Lance dataset as lidar_reacher.yaml (a different copy with identical episode
-# structure would sample identically, but pointing at the same dataset removes the
-# doubt -- keep this and lidar_reacher.yaml on the same path). Both eval.py and
-# eval_lidar.py sample via
-# eval_lidar.sample_eval_starts, deterministic in (dataset.lengths, num_eval,
-# goal_offset_steps, seed, max_start_step, min_goal_displacement) -- keep all
-# of them in sync with lidar_reacher.yaml or the comparison breaks. The
-# dataset's pixels column IS the original dm_control h5 image data
-# (lidar_from_h5.py copies it verbatim).
+# SEQUENCE-MATCHED with the lidar eval: this config plans on reacher.h5, the
+# original image data the released image checkpoints were trained on, while
+# lidar_reacher.yaml plans on reacher.lance. The two files hold the same
+# episodes in the same order (lidar_from_h5.py converts episode by episode),
+# and both eval.py and eval_lidar.py sample via eval_lidar.sample_eval_starts,
+# deterministic in (dataset.lengths, num_eval, goal_offset_steps, seed,
+# max_start_step, min_goal_displacement) -- so a given seed draws the
+# IDENTICAL (episode, start_step) windows in both modalities. Keep all of them
+# in sync with lidar_reacher.yaml or the comparison breaks. The table's own
+# `pixels` column holds sensor-view renders since dataset version 2
+# (docs/data.md), which is why the image eval reads the h5 file.
 
 world:
   env_name: swm/ReacherDMControl-v0
@@ -64,10 +65,10 @@ eval:
   max_start_step: null
   # MUST equal the dataset's stored pixel resolution
   img_size: 224
-  # SAME dataset as lidar_reacher.yaml => same sampled eval sequences.
-  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/reacher.lance
-  # Same callables as the h5-based image eval; the Lance dataset
-  # carries the same qpos/qvel columns.
+  # SAME episodes as lidar_reacher.yaml's reacher.lance => same eval windows.
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/reacher.h5
+  # The callables read qpos/qvel from the h5 file (the Lance table carries
+  # the same columns).
   callables:
     # -- set state
     - method: set_state

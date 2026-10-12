@@ -56,6 +56,16 @@ repository's 10-epoch point-cloud protocol, so the comparison against the releas
 checkpoint differs in budget as well as in loss. Every epoch is exported, so an earlier export gives
 the equal-budget comparison against the point-cloud arms without a second run.
 
+### Sensor-view image experiments
+
+Version 2 of the Two-Room, Reacher and Push-T tables carries the sensor's own view in `pixels`
+([`docs/data.md`](data.md)). `config/train/image_lewm_<env>.yaml` trains the image LeWM objective
+under this repository's point-cloud protocol, on the `.h5` images by default and on the sensor view
+with `data.dataset.name=$PLWM_DATA_ROOT/<table>.lance` (the image Delta-JEPA configs take the same
+override); `config/eval/image_<env>_scanview.yaml` evaluates an image model in the lidar
+environment rendered from the sensor's camera; and `dinowm_swm/lance_dset.py` lets DINO-WM train
+from a table when its `data_path` ends in `.lance`. Checkpoints of these runs are not released yet.
+
 ## DINO-WM (image baseline)
 
 `dinowm_swm/` runs the unmodified official DINO-WM code (`third_party/dino_wm/`) on the image

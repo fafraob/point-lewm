@@ -11,15 +11,17 @@ defaults:
 # the image model plans over that env's own pixels.
 # The MuJoCo mirror (swm/PushTLidar-v1) is a lidar-only concern.
 #
-# SEQUENCE-MATCHED with the lidar eval: this config evaluates on the SAME
-# Lance dataset as lidar_pusht.yaml, NOT on pusht_expert_train.h5. Both eval.py
-# and eval_lidar.py sample via eval_lidar.sample_eval_starts, deterministic in
-# (dataset.lengths, num_eval, goal_offset_steps, seed, max_start_step,
-# min_goal_displacement) -- identical dataset + identical values means a given
-# seed draws the IDENTICAL (episode, start_step) windows in both modalities.
-# Keep all of them in sync with lidar_pusht.yaml or the comparison breaks.
-# The dataset's pixels column IS the original h5 image data (lidar_from_h5.py
-# copies it verbatim).
+# SEQUENCE-MATCHED with the lidar eval: this config plans on
+# pusht_expert_train.h5, the original image data the released image
+# checkpoints were trained on, while lidar_pusht.yaml plans on pusht.lance.
+# The two files hold the same episodes in the same order (lidar_from_h5.py
+# converts episode by episode), and both eval.py and eval_lidar.py sample via
+# eval_lidar.sample_eval_starts, deterministic in (dataset.lengths, num_eval,
+# goal_offset_steps, seed, max_start_step, min_goal_displacement) -- so a
+# given seed draws the IDENTICAL (episode, start_step) windows in both
+# modalities. Keep all of them in sync with lidar_pusht.yaml or the comparison
+# breaks. The table's own `pixels` column holds sensor-view renders since
+# dataset version 2 (docs/data.md), which is why the image eval reads the h5.
 
 world:
   env_name: swm/PushT-v1
@@ -59,10 +61,10 @@ eval:
   max_start_step: null
   # MUST equal the dataset's stored pixel resolution
   img_size: 224
-  # SAME dataset as lidar_pusht.yaml => same sampled eval sequences.
-  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/pusht.lance
-  # Same callables as the h5-based image eval; the Lance dataset
-  # carries the same state[7] column (verified on the lidar side).
+  # SAME episodes as lidar_pusht.yaml's pusht.lance => same eval windows.
+  dataset_name: ${oc.env:PLWM_DATA_ROOT,data}/pusht_expert_train.h5
+  # The callables read the 7-d `state` from the h5 file (the Lance table
+  # carries the same column).
   callables:
     # -- set state
     - method: _set_state

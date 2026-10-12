@@ -7,9 +7,9 @@
 # Tables land in $PLWM_DATA_ROOT (default: <repo>/data), one Lance table per
 # environment, exactly as config/eval/*.yaml and config/train/data/*.yaml expect:
 #
-#     tworoom  fafraob/point-cloud-tworoom   two_room.lance.tar.zst  (0.8 GB)  -> two_room.lance
-#     reacher  fafraob/point-cloud-reacher   reacher.lance.tar.zst   (7.1 GB)  -> reacher.lance
-#     pusht    fafraob/point-cloud-pusht     pusht.lance.tar.zst     (4.6 GB)  -> pusht.lance
+#     tworoom  fafraob/point-cloud-tworoom   two_room.lance.tar.zst  (0.6 GB)  -> two_room.lance
+#     reacher  fafraob/point-cloud-reacher   reacher.lance.tar.zst   (7.7 GB)  -> reacher.lance
+#     pusht    fafraob/point-cloud-pusht     pusht.lance.tar.zst     (2.6 GB)  -> pusht.lance
 #     cube     fafraob/point-cloud-ogb-cube  cube.lance.tar.zst      (43 GB)   -> cube.lance
 #
 # The archives are deleted after extraction (pass --keep-archives to keep them).

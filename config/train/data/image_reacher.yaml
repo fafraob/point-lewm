@@ -12,8 +12,9 @@
 # The env is dm_control's reacher (swm/ReacherDMControl-v0), which is what
 # config/eval/image_reacher.yaml plans in.
 #
-# config/eval/image_reacher.yaml plans on reacher.lance, whose `pixels` column
-# is this file's image data copied verbatim by lidar_from_h5.py.
+# config/eval/image_reacher.yaml plans on this file as well. Since dataset
+# version 2 the `pixels` column of reacher.lance holds sensor-view renders
+# instead of these images (docs/data.md).
 #
 # Loads pixels + action only: the JEPA reads exactly those two columns
 # (jepa.encode), so `observation` would cost IO and a z-score pass for nothing.
